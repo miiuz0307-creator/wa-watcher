@@ -13,6 +13,8 @@ import path from 'path';
 import fs from 'fs';
 import pino from 'pino';
 import qrcode from 'qrcode';
+import { spawn } from 'child_process';
+import ffmpegPath from 'ffmpeg-static';
 
 import makeWASocket, {
   useMultiFileAuthState,
@@ -50,6 +52,18 @@ const sessions = {}; // userId -> { sock, qr, status, reconnecting }
 function cleanId(id = '') { return String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40); }
 
 const MEDIA_TYPES = ['image', 'video', 'audio', 'voice', 'sticker', 'document'];
+
+// המרת הודעה קולית (OGG/Opus) ל-MP3 כדי שתתנגן בכל מכשיר, כולל אייפון/ספארי
+function transcodeToMp3(inPath, outPath) {
+  return new Promise((resolve, reject) => {
+    if (!ffmpegPath) return reject(new Error('no ffmpeg'));
+    const p = spawn(ffmpegPath, ['-y', '-i', inPath, '-codec:a', 'libmp3lame', '-qscale:a', '4', outPath]);
+    let err = '';
+    p.stderr.on('data', d => { err += d; });
+    p.on('close', code => code === 0 ? resolve() : reject(new Error('ffmpeg ' + code + ': ' + err.slice(-200))));
+    p.on('error', reject);
+  });
+}
 
 // פותח עטיפות של הודעות "נעלמות" / חד-פעמיות / נערכות, כדי לחלץ את התוכן האמיתי
 function unwrap(msg, depth = 0) {
@@ -168,9 +182,21 @@ async function startSession(userId) {
         try {
           const buffer = await downloadMediaMessage(m, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
           const ext = { image: 'jpg', video: 'mp4', audio: 'ogg', voice: 'ogg', sticker: 'webp', document: 'bin' }[msgType] || 'bin';
-          const fileName = `${userId}_${id}.${ext}`;
-          fs.writeFileSync(path.join(MEDIA_DIR, fileName), buffer);
-          media_path = `/media/${fileName}`;
+          const base = `${userId}_${id}`;
+          const rawName = `${base}.${ext}`;
+          const rawPath = path.join(MEDIA_DIR, rawName);
+          fs.writeFileSync(rawPath, buffer);
+          // הודעה קולית/אודיו → המרה ל-MP3 שמתנגן בכל מכשיר (אייפון כולל)
+          if (msgType === 'voice' || msgType === 'audio') {
+            try {
+              const mp3Name = `${base}.mp3`;
+              await transcodeToMp3(rawPath, path.join(MEDIA_DIR, mp3Name));
+              media_path = `/media/${mp3Name}`;
+              try { fs.unlinkSync(rawPath); } catch {}
+            } catch (e) { console.warn(`[${userId}] המרת אודיו נכשלה`, e.message); media_path = `/media/${rawName}`; }
+          } else {
+            media_path = `/media/${rawName}`;
+          }
         } catch (e) { console.warn(`[${userId}] מדיה נכשלה`, e.message); }
       }
 
