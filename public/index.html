@@ -34,6 +34,10 @@
     .msg audio{width:100%}
     .msg img,.msg video{max-height:320px}
     .empty{text-align:center;color:var(--muted);padding:40px;font-size:14px}
+    .settings{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+    .settings .s-title{font-size:13px;color:var(--muted)}
+    .sw{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer}
+    .sw input{width:18px;height:18px;accent-color:var(--green);cursor:pointer}
   </style>
 </head>
 <body>
@@ -44,6 +48,11 @@
       <p>פתח וואטסאפ › <b>הגדרות</b> › <b>מכשירים מקושרים</b> › <b>קישור מכשיר</b> וסרוק את הקוד.<br>הקוד מתחלף — אם נעלם, רענן את הדף.</p>
     </div>
     <div id="main" class="hidden">
+      <div class="settings">
+        <span class="s-title">⚙️ מאיפה לשאוב:</span>
+        <label class="sw"><input type="checkbox" id="cap-private" checked><span>הודעות פרטיות</span></label>
+        <label class="sw"><input type="checkbox" id="cap-groups"><span>קבוצות</span></label>
+      </div>
       <div class="tabs">
         <div class="tab active" data-tab="all">כל ההודעות</div>
         <div class="tab" data-tab="deleted">נמחקו <span class="count" id="del-count">0</span></div>
@@ -73,6 +82,12 @@
     socket.on('message',m=>{upsert(m);render()});
     socket.on('deleted',m=>{m.deleted=1;upsert(m);deletedCount++;delCountEl.textContent=deletedCount;render()});
     document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');currentTab=t.dataset.tab;render()}));
+    // --- הגדרות מקור (פרטי/קבוצות) ---
+    const capPriv=document.getElementById('cap-private'),capGrp=document.getElementById('cap-groups');
+    socket.on('settings',s=>{capPriv.checked=!!s.capture_private;capGrp.checked=!!s.capture_groups});
+    function saveSettings(){fetch('/api/'+userId+'/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capture_private:capPriv.checked,capture_groups:capGrp.checked})})}
+    capPriv.addEventListener('change',saveSettings);
+    capGrp.addEventListener('change',saveSettings);
   </script>
 </body>
 </html>

@@ -139,6 +139,11 @@ async function startSession(userId) {
       if (!m.message) continue;
       const id = m.key.id;
       const chat_jid = m.key.remoteJid || '';
+      // סינון לפי הגדרות המשתמש: פרטי / קבוצות
+      const isGroup = chat_jid.endsWith('@g.us');
+      const st = store.getSettings(userId);
+      if (isGroup && !st.capture_groups) continue;
+      if (!isGroup && !st.capture_private) continue;
       const from_me = m.key.fromMe ? 1 : 0;
       const sender_jid = m.key.participant || chat_jid;
       const sender_name = m.pushName || '';
@@ -189,6 +194,7 @@ io.on('connection', (socket) => {
     store.upsertUser(userId);
     // היסטוריה + QR נוכחי
     socket.emit('history', store.recent(userId, 100));
+    socket.emit('settings', store.getSettings(userId));
     const sess = sessions[userId];
     if (sess?.qr) socket.emit('qr', sess.qr);
     if (sess?.status) socket.emit('status', sess.status);
@@ -199,6 +205,16 @@ io.on('connection', (socket) => {
 // ---------- API ----------
 app.get('/api/:userId/messages', (req, res) => res.json(store.recent(cleanId(req.params.userId), 100)));
 app.get('/api/:userId/deleted', (req, res) => res.json(store.deletedOnly(cleanId(req.params.userId))));
+// הגדרות מקור (פרטי / קבוצות)
+app.get('/api/:userId/settings', (req, res) => res.json(store.getSettings(cleanId(req.params.userId))));
+app.post('/api/:userId/settings', (req, res) => {
+  const id = cleanId(req.params.userId);
+  store.upsertUser(id);
+  store.setSettings(id, { capture_private: req.body.capture_private, capture_groups: req.body.capture_groups });
+  const s = store.getSettings(id);
+  io.to(id).emit('settings', s);
+  res.json(s);
+});
 
 // פאנל ניהול — רשימת כל הלקוחות
 app.get('/api/admin/users', (req, res) => {

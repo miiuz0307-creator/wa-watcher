@@ -14,11 +14,13 @@ db.pragma('journal_mode = WAL');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
-    id          TEXT PRIMARY KEY,   -- מזהה לקוח (בקישור)
-    name        TEXT,               -- שם תצוגה
-    created_at  INTEGER,
-    status      TEXT DEFAULT 'new', -- new / waiting_qr / connected / disconnected
-    phone       TEXT                -- המספר שחובר (אם ידוע)
+    id              TEXT PRIMARY KEY,   -- מזהה לקוח (בקישור)
+    name            TEXT,               -- שם תצוגה
+    created_at      INTEGER,
+    status          TEXT DEFAULT 'new', -- new / waiting_qr / connected / disconnected
+    phone           TEXT,               -- המספר שחובר (אם ידוע)
+    capture_private INTEGER DEFAULT 1,  -- לשאוב הודעות פרטיות (1 על 1)
+    capture_groups  INTEGER DEFAULT 0   -- לשאוב גם מקבוצות
   );
 
   CREATE TABLE IF NOT EXISTS messages (
@@ -49,6 +51,13 @@ try {
   }
 } catch (e) { console.warn('DB migrate:', e.message); }
 
+// הגירה: הוספת עמודות הגדרות מקור למשתמשים קיימים
+try {
+  const ucols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+  if (!ucols.includes('capture_private')) db.exec("ALTER TABLE users ADD COLUMN capture_private INTEGER DEFAULT 1");
+  if (!ucols.includes('capture_groups')) db.exec("ALTER TABLE users ADD COLUMN capture_groups INTEGER DEFAULT 0");
+} catch (e) { console.warn('DB migrate users:', e.message); }
+
 // עכשיו בטוח ליצור אינדקסים על user_id (העמודה קיימת בוודאות)
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_user ON messages(user_id);
@@ -63,6 +72,7 @@ const upsertUserStmt = db.prepare(`
 `);
 const setUserStatusStmt = db.prepare(`UPDATE users SET status = @status WHERE id = @id`);
 const setUserPhoneStmt = db.prepare(`UPDATE users SET phone = @phone WHERE id = @id`);
+const setSettingsStmt = db.prepare(`UPDATE users SET capture_private = @capture_private, capture_groups = @capture_groups WHERE id = @id`);
 const getUserStmt = db.prepare(`SELECT * FROM users WHERE id = ?`);
 const allUsersStmt = db.prepare(`
   SELECT u.*,
@@ -90,6 +100,13 @@ export const store = {
   setPhone(id, phone) { setUserPhoneStmt.run({ id, phone }); },
   getUser(id) { return getUserStmt.get(id); },
   allUsers() { return allUsersStmt.all(); },
+  getSettings(id) {
+    const u = getUserStmt.get(id);
+    return { capture_private: u ? u.capture_private : 1, capture_groups: u ? u.capture_groups : 0 };
+  },
+  setSettings(id, { capture_private, capture_groups }) {
+    setSettingsStmt.run({ id, capture_private: capture_private ? 1 : 0, capture_groups: capture_groups ? 1 : 0 });
+  },
 
   // messages
   saveMessage(msg) { insertStmt.run(msg); },
