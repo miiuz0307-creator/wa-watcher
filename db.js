@@ -36,21 +36,24 @@ db.exec(`
     deleted_at  INTEGER
   );
 
-  CREATE INDEX IF NOT EXISTS idx_user ON messages(user_id);
-  CREATE INDEX IF NOT EXISTS idx_user_deleted ON messages(user_id, deleted);
 `);
 
 // הגירה: אם ה-DB נוצר בגרסה החד-משתמשת (בלי עמודת user_id) — נוסיף אותה
-// ונשייך את ההודעות הקיימות ל-'michael', כדי שלא יאבדו ולא יקרוס.
+// ונשייך את ההודעות הקיימות ל-'michael'. חייב לרוץ לפני יצירת האינדקסים על user_id.
 try {
   const cols = db.prepare('PRAGMA table_info(messages)').all().map(c => c.name);
   if (!cols.includes('user_id')) {
     db.exec("ALTER TABLE messages ADD COLUMN user_id TEXT");
     db.exec("UPDATE messages SET user_id = 'michael' WHERE user_id IS NULL");
-    db.exec("CREATE INDEX IF NOT EXISTS idx_user ON messages(user_id)");
     console.log('♻️ DB: הוספה עמודת user_id והודעות קיימות שויכו ל-michael');
   }
 } catch (e) { console.warn('DB migrate:', e.message); }
+
+// עכשיו בטוח ליצור אינדקסים על user_id (העמודה קיימת בוודאות)
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_user ON messages(user_id);
+  CREATE INDEX IF NOT EXISTS idx_user_deleted ON messages(user_id, deleted);
+`);
 
 // ---------- users ----------
 const upsertUserStmt = db.prepare(`
