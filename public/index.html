@@ -57,10 +57,12 @@
         <span class="s-title">⚙️ מאיפה לשאוב:</span>
         <label class="sw"><input type="checkbox" id="cap-private" checked><span>הודעות פרטיות</span></label>
         <label class="sw"><input type="checkbox" id="cap-groups"><span>קבוצות</span></label>
+        <label class="sw"><input type="checkbox" id="save-vo" checked><span>חד-פעמיות</span></label>
       </div>
       <div class="tabs">
         <div class="tab active" data-tab="all">כל ההודעות</div>
         <div class="tab" data-tab="deleted">נמחקו <span class="count" id="del-count">0</span></div>
+        <div class="tab" data-tab="viewonce">📸 חד-פעמיות <span class="count" id="vo-count">0</span></div>
       </div>
       <div id="feed"></div>
     </div>
@@ -99,21 +101,25 @@
       const label=typeLabel[m.type]||m.type;
       let body=m.text?escapeHtml(m.text):'';
       if(!body&&!m.media_path){body=`<span style="color:var(--muted)">${label}${m.deleted?' (התוכן לא נשמר)':''}</span>`;}
-      const badge=m.deleted?'🗑️ נמחקה':label;
+      let badge=m.deleted?'🗑️ נמחקה':label;
+      if(m.view_once)badge='📸 חד-פעמית'+(m.deleted?' · נמחקה':'');
       return`<div class="msg ${m.deleted?'deleted':''}"><div class="top"><span class="who">${who}</span><span class="time">${fmtTime(m.timestamp)}</span></div><div class="body">${body} <span class="badge ${m.deleted?'del':''}">${badge}</span></div>${mediaHtml(m)}</div>`;
     }
     function keyTs(m){return currentTab==='deleted'?(m.deleted_at||m.timestamp):m.timestamp;}
     function render(){
-      let list=currentTab==='deleted'?messages.filter(m=>m.deleted):messages.slice();
+      let list;
+      if(currentTab==='deleted')list=messages.filter(m=>m.deleted);
+      else if(currentTab==='viewonce')list=messages.filter(m=>m.view_once);
+      else list=messages.slice();
       list.sort((a,b)=>keyTs(b)-keyTs(a));
-      if(!list.length){feed.innerHTML=`<div class="empty">${currentTab==='deleted'?'עדיין לא נתפסו הודעות שנמחקו':'אין הודעות עדיין'}</div>`;return}
-      if(currentTab==='deleted'){
+      if(!list.length){const e=currentTab==='deleted'?'עדיין לא נתפסו הודעות שנמחקו':currentTab==='viewonce'?'עדיין לא נתפסו הודעות חד-פעמיות':'אין הודעות עדיין';feed.innerHTML=`<div class="empty">${e}</div>`;return}
+      if(currentTab==='deleted'||currentTab==='viewonce'){
         let html='',lastDay=null;
         for(const m of list){const dl=dayLabel(m.deleted_at||m.timestamp);if(dl!==lastDay){html+=`<div class="dayhead">${dl}</div>`;lastDay=dl;}html+=msgHtml(m);}
         feed.innerHTML=html;
       }else{feed.innerHTML=list.map(msgHtml).join('');}
     }
-    function updateDelCount(){deletedCount=messages.filter(m=>m.deleted).length;delCountEl.textContent=deletedCount;}
+    function updateDelCount(){deletedCount=messages.filter(m=>m.deleted).length;delCountEl.textContent=deletedCount;document.getElementById('vo-count').textContent=messages.filter(m=>m.view_once).length;}
     function showMain(){qrBox.classList.add('hidden');main.classList.remove('hidden');}
     function upsert(m){if(byId[m.id]){Object.assign(byId[m.id],m)}else{byId[m.id]=m;messages.unshift(m)}}
     socket.on('qr',d=>{qrImg.src=d;qrBox.classList.remove('hidden');main.classList.add('hidden')});
@@ -121,15 +127,17 @@
     socket.on('connected',()=>{qrBox.classList.add('hidden');main.classList.remove('hidden')});
     socket.on('history',arr=>{messages=arr.slice();Object.keys(byId).forEach(k=>delete byId[k]);messages.forEach(m=>byId[m.id]=m);if(arr.length)showMain();updateDelCount();render()});
     socket.on('deletedList',arr=>{arr.forEach(m=>{m.deleted=1;upsert(m)});if(arr.length)showMain();updateDelCount();render()});
-    socket.on('message',m=>{upsert(m);render()});
+    socket.on('viewOnceList',arr=>{arr.forEach(m=>{m.view_once=1;upsert(m)});if(arr.length)showMain();updateDelCount();render()});
+    socket.on('message',m=>{upsert(m);updateDelCount();render()});
     socket.on('deleted',m=>{m.deleted=1;upsert(m);updateDelCount();render()});
     document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');currentTab=t.dataset.tab;render()}));
     // --- הגדרות מקור (פרטי/קבוצות) ---
-    const capPriv=document.getElementById('cap-private'),capGrp=document.getElementById('cap-groups');
-    socket.on('settings',s=>{capPriv.checked=!!s.capture_private;capGrp.checked=!!s.capture_groups});
-    function saveSettings(){fetch('/api/'+userId+'/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capture_private:capPriv.checked,capture_groups:capGrp.checked})})}
+    const capPriv=document.getElementById('cap-private'),capGrp=document.getElementById('cap-groups'),saveVo=document.getElementById('save-vo');
+    socket.on('settings',s=>{capPriv.checked=!!s.capture_private;capGrp.checked=!!s.capture_groups;saveVo.checked=s.save_viewonce!==0});
+    function saveSettings(){fetch('/api/'+userId+'/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capture_private:capPriv.checked,capture_groups:capGrp.checked,save_viewonce:saveVo.checked})})}
     capPriv.addEventListener('change',saveSettings);
     capGrp.addEventListener('change',saveSettings);
+    saveVo.addEventListener('change',saveSettings);
   </script>
 </body>
 </html>

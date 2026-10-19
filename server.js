@@ -79,7 +79,10 @@ function unwrap(msg, depth = 0) {
 }
 
 function extractContent(m) {
-  const msg = unwrap(m.message || {});
+  const orig = m.message || {};
+  const voWrapper = !!(orig.viewOnceMessage || orig.viewOnceMessageV2 || orig.viewOnceMessageV2Extension);
+  const msg = unwrap(orig);
+  const viewOnce = voWrapper || !!(msg.imageMessage?.viewOnce || msg.videoMessage?.viewOnce || msg.audioMessage?.viewOnce);
   let type = 'unknown', text = '';
   if (msg.conversation) { type = 'text'; text = msg.conversation; }
   else if (msg.extendedTextMessage) { type = 'text'; text = msg.extendedTextMessage.text || ''; }
@@ -90,7 +93,7 @@ function extractContent(m) {
   else if (msg.documentMessage) { type = 'document'; text = msg.documentMessage.fileName || ''; }
   else if (msg.contactMessage) { type = 'contact'; text = msg.contactMessage.displayName || ''; }
   else if (msg.locationMessage) { type = 'location'; text = `${msg.locationMessage.degreesLatitude}, ${msg.locationMessage.degreesLongitude}`; }
-  return { type, text };
+  return { type, text, viewOnce };
 }
 
 async function startSession(userId) {
@@ -175,12 +178,16 @@ async function startSession(userId) {
       const sender_jid = m.key.participant || chat_jid;
       const sender_name = m.pushName || '';
       const timestamp = Number(m.messageTimestamp) || Math.floor(Date.now() / 1000);
-      const { type: msgType, text } = extractContent(m);
+      const { type: msgType, text, viewOnce } = extractContent(m);
+      // הודעה חד-פעמית והמתג כבוי → מדלגים
+      if (viewOnce && !st.save_viewonce) continue;
 
       let media_path = null;
       if (MEDIA_TYPES.includes(msgType)) {
         try {
-          const buffer = await downloadMediaMessage(m, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          // מורידים מההודעה ה"פתוחה" (ללא עטיפת view-once/ephemeral) כדי שגם מדיה חד-פעמית תרד
+          const mForDl = { key: m.key, message: unwrap(m.message || {}) };
+          const buffer = await downloadMediaMessage(mForDl, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
           const ext = { image: 'jpg', video: 'mp4', audio: 'ogg', voice: 'ogg', sticker: 'webp', document: 'bin' }[msgType] || 'bin';
           const base = `${userId}_${id}`;
           const rawName = `${base}.${ext}`;
@@ -200,9 +207,10 @@ async function startSession(userId) {
         } catch (e) { console.warn(`[${userId}] מדיה נכשלה`, e.message); }
       }
 
-      const record = { id, user_id: userId, chat_jid, sender_jid, sender_name, from_me, type: msgType, text, media_path, timestamp };
+      const record = { id, user_id: userId, chat_jid, sender_jid, sender_name, from_me, type: msgType, text, media_path, timestamp, view_once: viewOnce ? 1 : 0 };
       store.saveMessage(record);
       io.to(userId).emit('message', record);
+      if (viewOnce) console.log(`📸 [${userId}] נשמרה הודעה חד-פעמית (${msgType})`);
     }
   });
 
@@ -237,6 +245,7 @@ io.on('connection', (socket) => {
     // היסטוריה + QR נוכחי
     socket.emit('history', store.recent(userId, 100));
     socket.emit('deletedList', store.deletedOnly(userId, 1000)); // נטען בנפרד כדי שישרוד רענון
+    socket.emit('viewOnceList', store.viewOnceOnly(userId, 1000));
     socket.emit('settings', store.getSettings(userId));
     const sess = sessions[userId];
     if (sess?.qr) socket.emit('qr', sess.qr);
@@ -261,7 +270,7 @@ app.get('/api/:userId/settings', (req, res) => res.json(store.getSettings(cleanI
 app.post('/api/:userId/settings', (req, res) => {
   const id = cleanId(req.params.userId);
   store.upsertUser(id);
-  store.setSettings(id, { capture_private: req.body.capture_private, capture_groups: req.body.capture_groups });
+  store.setSettings(id, { capture_private: req.body.capture_private, capture_groups: req.body.capture_groups, save_viewonce: req.body.save_viewonce });
   const s = store.getSettings(id);
   io.to(id).emit('settings', s);
   res.json(s);
