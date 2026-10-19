@@ -41,7 +41,8 @@ const io = new SocketIO(httpServer);
 
 app.use(express.json());
 app.use('/media', express.static(MEDIA_DIR));
-app.use(express.static(path.join(__dirname, 'public')));
+// index:false כדי שנתיב "/" יגיע לדף הכניסה (landing) ולא ל-index.html אוטומטית
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ---------- מנהל הסשנים (סשן לכל לקוח) ----------
 const sessions = {}; // userId -> { sock, qr, status, reconnecting }
