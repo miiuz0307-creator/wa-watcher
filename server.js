@@ -21,7 +21,7 @@ import makeWASocket, {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   Browsers,
-} from '@whiskeysockets/baileys';
+} from 'baileys';
 
 import { store } from './db.js';
 
