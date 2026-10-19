@@ -1,9 +1,9 @@
-// server.js — שרת מרכזי
-// מתחבר לוואטסאפ כ"מכשיר מקושר" דרך QR, שומר כל הודעה נכנסת,
-// מזהה מחיקות של השולח, ומגיש ממשק web שמראה הכל בזמן אמת.
+// server.js — שרת רב-משתמשי (SaaS)
+// כל לקוח מקבל קישור /u/<id> משלו, סורק QR משלו, ורואה רק את ההודעות שלו.
+// למנהל יש /admin עם סקירה של כל הלקוחות.
 //
-// ⚠️ חוקי כל עוד מדובר בהודעות שנשלחות אל המספר שאתה מחבר (אתה צד בשיחה).
-// חיבור לא-רשמי כזה נוגד את תנאי השימוש של WhatsApp — מומלץ מספר ייעודי.
+// ⚠️ חוקי כל עוד כל לקוח מחבר את המספר של עצמו (הוא צד בשיחות). לא כלי לריגול.
+// החיבור לא-רשמי (Baileys) נוגד את תנאי השימוש של WhatsApp — ייתכן חסימת מספר.
 
 import express from 'express';
 import { createServer } from 'http';
@@ -13,7 +13,6 @@ import path from 'path';
 import fs from 'fs';
 import pino from 'pino';
 import qrcode from 'qrcode';
-import qrcodeTerminal from 'qrcode-terminal';
 
 import makeWASocket, {
   useMultiFileAuthState,
@@ -26,13 +25,13 @@ import makeWASocket, {
 import { store } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// נתונים קבועים: על Railway מותקן volume ב-/app/data — שומרים שם את ההתחברות
-// והמדיה כדי שלא צריך לסרוק QR מחדש בכל פריסה. מקומית — נשמר בתיקיית הפרויקט.
 const DATA_DIR = process.env.DATA_DIR || (fs.existsSync('/app/data') ? '/app/data' : __dirname);
 const MEDIA_DIR = path.join(DATA_DIR, 'media');
-const AUTH_DIR = path.join(DATA_DIR, 'auth');
+const AUTH_ROOT = path.join(DATA_DIR, 'auth');
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
+if (!fs.existsSync(AUTH_ROOT)) fs.mkdirSync(AUTH_ROOT, { recursive: true });
 
+const ADMIN_KEY = process.env.ADMIN_KEY || 'michael'; // מפתח כניסה לפאנל הניהול
 const logger = pino({ level: 'warn' });
 
 // ---------- שרת web + socket ----------
@@ -40,192 +39,196 @@ const app = express();
 const httpServer = createServer(app);
 const io = new SocketIO(httpServer);
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
 app.use('/media', express.static(MEDIA_DIR));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// API: הודעות אחרונות
-app.get('/api/messages', (req, res) => {
-  res.json(store.recent(Number(req.query.limit) || 100));
-});
-// API: רק הודעות שנמחקו
-app.get('/api/deleted', (req, res) => {
-  res.json(store.deletedOnly());
-});
+// ---------- מנהל הסשנים (סשן לכל לקוח) ----------
+const sessions = {}; // userId -> { sock, qr, status, reconnecting }
 
-let currentQR = null;
-let connectionState = 'מתחבר...';
-
-io.on('connection', (socket) => {
-  // כשממשק חדש נפתח — שלח לו את המצב הנוכחי
-  if (currentQR) socket.emit('qr', currentQR);
-  socket.emit('status', connectionState);
-  socket.emit('history', store.recent(100));
-});
-
-// ---------- עזר: חילוץ תוכן ההודעה ----------
-function extractContent(m) {
-  const msg = m.message || {};
-  let type = 'unknown';
-  let text = '';
-
-  if (msg.conversation) {
-    type = 'text';
-    text = msg.conversation;
-  } else if (msg.extendedTextMessage) {
-    type = 'text';
-    text = msg.extendedTextMessage.text || '';
-  } else if (msg.imageMessage) {
-    type = 'image';
-    text = msg.imageMessage.caption || '';
-  } else if (msg.videoMessage) {
-    type = 'video';
-    text = msg.videoMessage.caption || '';
-  } else if (msg.audioMessage) {
-    // הודעה קולית / אודיו
-    type = msg.audioMessage.ptt ? 'voice' : 'audio';
-  } else if (msg.stickerMessage) {
-    type = 'sticker';
-  } else if (msg.documentMessage) {
-    type = 'document';
-    text = msg.documentMessage.fileName || '';
-  } else if (msg.contactMessage) {
-    type = 'contact';
-    text = msg.contactMessage.displayName || '';
-  } else if (msg.locationMessage) {
-    type = 'location';
-    text = `${msg.locationMessage.degreesLatitude}, ${msg.locationMessage.degreesLongitude}`;
-  }
-  return { type, text };
-}
+function cleanId(id = '') { return String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40); }
 
 const MEDIA_TYPES = ['image', 'video', 'audio', 'voice', 'sticker', 'document'];
 
-// ---------- החיבור לוואטסאפ ----------
-let reconnecting = false;
-async function startWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  // משיכת גרסת הפרוטוקול העדכנית של וואטסאפ — בלעדיה ההתחברות נכשלת (קוד 408)
-  // וה-QR לא נוצר. זה היה הבאג.
+function extractContent(m) {
+  const msg = m.message || {};
+  let type = 'unknown', text = '';
+  if (msg.conversation) { type = 'text'; text = msg.conversation; }
+  else if (msg.extendedTextMessage) { type = 'text'; text = msg.extendedTextMessage.text || ''; }
+  else if (msg.imageMessage) { type = 'image'; text = msg.imageMessage.caption || ''; }
+  else if (msg.videoMessage) { type = 'video'; text = msg.videoMessage.caption || ''; }
+  else if (msg.audioMessage) { type = msg.audioMessage.ptt ? 'voice' : 'audio'; }
+  else if (msg.stickerMessage) { type = 'sticker'; }
+  else if (msg.documentMessage) { type = 'document'; text = msg.documentMessage.fileName || ''; }
+  else if (msg.contactMessage) { type = 'contact'; text = msg.contactMessage.displayName || ''; }
+  else if (msg.locationMessage) { type = 'location'; text = `${msg.locationMessage.degreesLatitude}, ${msg.locationMessage.degreesLongitude}`; }
+  return { type, text };
+}
+
+async function startSession(userId) {
+  userId = cleanId(userId);
+  if (!userId) return;
+  if (sessions[userId]?.sock) return sessions[userId]; // כבר רץ
+
+  const authDir = path.join(AUTH_ROOT, userId);
+  const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
-  console.log('גרסת WhatsApp:', version.join('.'));
+
+  const sess = sessions[userId] || (sessions[userId] = { sock: null, qr: null, status: 'מתחבר...', reconnecting: false });
 
   const sock = makeWASocket({
     version,
     auth: state,
     logger,
     printQRInTerminal: false,
-    browser: Browsers.ubuntu('Chrome'), // מזהה מכשיר — נדרש כדי שהשרת ינפיק QR
-    markOnlineOnConnect: false, // לא "להדליק" נוכחות — נשאר דיסקרטי
-    connectTimeoutMs: 60000,        // זמן ארוך יותר לחיבור — מונע 408 מוקדם
-    keepAliveIntervalMs: 15000,     // ping תכוף יותר לשמירת החיבור
-    defaultQueryTimeoutMs: undefined, // בלי timeout אגרסיבי על שאילתות
-    retryRequestDelayMs: 2000,
-    qrTimeout: 60000,               // חלון ארוך יותר להצגת ה-QR
+    browser: Browsers.ubuntu('Chrome'),
+    markOnlineOnConnect: false,
+    connectTimeoutMs: 60000,
+    keepAliveIntervalMs: 15000,
+    defaultQueryTimeoutMs: undefined,
+    qrTimeout: 60000,
     syncFullHistory: false,
   });
+  sess.sock = sock;
 
   sock.ev.on('creds.update', saveCreds);
 
-  // --- עדכוני חיבור + QR ---
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      currentQR = await qrcode.toDataURL(qr); // מייצר תמונת QR לממשק
-      connectionState = 'סרוק את ה-QR דרך וואטסאפ › מכשירים מקושרים';
-      io.emit('qr', currentQR);
-      io.emit('status', connectionState);
-      // גם בטרמינל — כדי שאפשר יהיה לסרוק ישירות בלי דפדפן
-      console.log('\n📱 סרוק את ה-QR הזה דרך וואטסאפ ← מכשירים מקושרים ← קישור מכשיר:\n');
-      qrcodeTerminal.generate(qr, { small: true });
+      sess.qr = await qrcode.toDataURL(qr);
+      sess.status = 'סרוק את ה-QR דרך וואטסאפ › מכשירים מקושרים';
+      store.setStatus(userId, 'waiting_qr');
+      io.to(userId).emit('qr', sess.qr);
+      io.to(userId).emit('status', sess.status);
     }
 
     if (connection === 'open') {
-      currentQR = null;
-      connectionState = '✅ מחובר — מאזין להודעות';
-      io.emit('status', connectionState);
-      io.emit('connected');
-      console.log('✅ מחובר לוואטסאפ');
+      sess.qr = null;
+      sess.status = '✅ מחובר — מאזין להודעות';
+      const phone = sock.user?.id?.split(':')[0] || null;
+      if (phone) store.setPhone(userId, phone);
+      store.setStatus(userId, 'connected');
+      io.to(userId).emit('status', sess.status);
+      io.to(userId).emit('connected');
+      console.log(`✅ [${userId}] מחובר`);
     }
 
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = code !== DisconnectReason.loggedOut;
-      connectionState = '🔌 נותק' + (shouldReconnect ? ' — מתחבר מחדש...' : ' (יצאת מהמכשירים המקושרים)');
-      io.emit('status', connectionState);
-      console.log('נותק. קוד:', code, 'מתחבר מחדש:', shouldReconnect);
-      // השהיה קצרה לפני חיבור מחדש, ומניעת סוקטים כפולים שהורגים זה את זה
-      if (shouldReconnect && !reconnecting) {
-        reconnecting = true;
-        setTimeout(() => { reconnecting = false; startWhatsApp().catch(console.error); }, 3000);
+      const loggedOut = code === DisconnectReason.loggedOut;
+      sess.status = loggedOut ? '🔌 נותק (יצא מהמכשירים המקושרים)' : '🔌 נותק — מתחבר מחדש...';
+      store.setStatus(userId, loggedOut ? 'disconnected' : 'connected');
+      io.to(userId).emit('status', sess.status);
+      console.log(`[${userId}] נותק. קוד: ${code}`);
+      sess.sock = null;
+      if (loggedOut) {
+        // התנתקות יזומה — מוחקים auth כדי לאפשר סריקה מחדש
+        try { fs.rmSync(authDir, { recursive: true, force: true }); } catch {}
+      } else if (!sess.reconnecting) {
+        sess.reconnecting = true;
+        setTimeout(() => { sess.reconnecting = false; startSession(userId).catch(console.error); }, 3000);
       }
     }
   });
 
-  // --- הודעות נכנסות: שמור הכל מיד ---
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+  sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const m of messages) {
       if (!m.message) continue;
-
       const id = m.key.id;
       const chat_jid = m.key.remoteJid || '';
       const from_me = m.key.fromMe ? 1 : 0;
-      const sender_jid = m.key.participant || chat_jid; // בקבוצה — מי שלח בפועל
+      const sender_jid = m.key.participant || chat_jid;
       const sender_name = m.pushName || '';
       const timestamp = Number(m.messageTimestamp) || Math.floor(Date.now() / 1000);
-
       const { type: msgType, text } = extractContent(m);
 
       let media_path = null;
-      // הורדת מדיה מיד — כולל הודעות קוליות — לפני מחיקה אפשרית
       if (MEDIA_TYPES.includes(msgType)) {
         try {
           const buffer = await downloadMediaMessage(m, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
           const ext = { image: 'jpg', video: 'mp4', audio: 'ogg', voice: 'ogg', sticker: 'webp', document: 'bin' }[msgType] || 'bin';
-          const fileName = `${id}.${ext}`;
+          const fileName = `${userId}_${id}.${ext}`;
           fs.writeFileSync(path.join(MEDIA_DIR, fileName), buffer);
           media_path = `/media/${fileName}`;
-        } catch (e) {
-          console.warn('לא הצלחתי להוריד מדיה עבור', id, e.message);
-        }
+        } catch (e) { console.warn(`[${userId}] מדיה נכשלה`, e.message); }
       }
 
-      const record = {
-        id, chat_jid, sender_jid, sender_name, from_me,
-        type: msgType, text, media_path, timestamp,
-      };
-
+      const record = { id, user_id: userId, chat_jid, sender_jid, sender_name, from_me, type: msgType, text, media_path, timestamp };
       store.saveMessage(record);
-      io.emit('message', record); // דחיפה לממשק בזמן אמת
+      io.to(userId).emit('message', record);
     }
   });
 
-  // --- עדכוני הודעות: כאן נתפסות המחיקות של השולח ---
   sock.ev.on('messages.update', (updates) => {
     for (const u of updates) {
-      // מחיקה "לכולם" מגיעה כ-protocolMessage מסוג REVOKE,
-      // או כ-messageStubType שמציין מחיקה.
-      const revoked =
-        u.update?.message === null ||
-        u.update?.messageStubType === 1 || // REVOKE
-        u.update?.message?.protocolMessage?.type === 0;
-
+      const revoked = u.update?.message === null || u.update?.messageStubType === 1 || u.update?.message?.protocolMessage?.type === 0;
       if (revoked) {
         const id = u.key?.id;
         if (!id) continue;
-        const original = store.markDeleted(id); // מחזיר את ההודעה המקורית
+        const original = store.markDeleted(userId, id);
         if (original) {
-          console.log('🗑️ זוהתה מחיקה:', id, '| המקור:', original.text || original.type);
-          io.emit('deleted', original); // הממשק יראה "הודעה נמחקה — הנה מה שהיה כתוב"
+          console.log(`🗑️ [${userId}] מחיקה זוהתה:`, original.text || original.type);
+          io.to(userId).emit('deleted', original);
         }
       }
     }
   });
+
+  return sess;
+}
+
+// ---------- Socket.IO: כל לקוח מצטרף ל"חדר" משלו ----------
+io.on('connection', (socket) => {
+  socket.on('join', async (rawId) => {
+    const userId = cleanId(rawId);
+    if (!userId) return;
+    socket.join(userId);
+    store.upsertUser(userId);
+    // היסטוריה + QR נוכחי
+    socket.emit('history', store.recent(userId, 100));
+    const sess = sessions[userId];
+    if (sess?.qr) socket.emit('qr', sess.qr);
+    if (sess?.status) socket.emit('status', sess.status);
+    if (!sess?.sock) startSession(userId).catch(console.error); // הפעלת סשן אם לא רץ
+  });
+});
+
+// ---------- API ----------
+app.get('/api/:userId/messages', (req, res) => res.json(store.recent(cleanId(req.params.userId), 100)));
+app.get('/api/:userId/deleted', (req, res) => res.json(store.deletedOnly(cleanId(req.params.userId))));
+
+// פאנל ניהול — רשימת כל הלקוחות
+app.get('/api/admin/users', (req, res) => {
+  if (req.query.key !== ADMIN_KEY) return res.status(401).json({ error: 'unauthorized' });
+  const users = store.allUsers().map(u => ({ ...u, live_status: sessions[u.id]?.status || '—' }));
+  res.json(users);
+});
+
+// ---------- נתיבי דפים ----------
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'landing.html')));
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
+app.get('/u/:userId', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// ---------- חידוש אוטומטי של סשנים מחוברים בעליית השרת ----------
+function resumeSessions() {
+  try {
+    for (const dir of fs.readdirSync(AUTH_ROOT)) {
+      const credsPath = path.join(AUTH_ROOT, dir, 'creds.json');
+      if (fs.existsSync(credsPath)) {
+        console.log(`♻️ מחדש סשן: ${dir}`);
+        store.upsertUser(dir);
+        startSession(dir).catch(console.error);
+      }
+    }
+  } catch (e) { console.warn('resumeSessions:', e.message); }
 }
 
 // ---------- הפעלה ----------
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
-  console.log(`\n🌐 הממשק פתוח בכתובת: http://localhost:${PORT}\n`);
-  startWhatsApp().catch((e) => console.error('שגיאת הפעלה:', e));
+  console.log(`\n🌐 השרת רץ על פורט ${PORT}`);
+  console.log(`   פאנל ניהול: /admin   (מפתח: ${ADMIN_KEY})\n`);
+  resumeSessions();
 });

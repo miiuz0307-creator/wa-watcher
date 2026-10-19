@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WA Watcher — התחברות</title>
+  <style>
+    :root{--bg:#0b141a;--panel:#111b21;--panel-2:#1f2c33;--green:#00a884;--text:#e9edef;--muted:#8696a0;--border:#26343d}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:36px 28px;max-width:420px;width:100%;text-align:center}
+    .logo{font-size:40px;margin-bottom:8px}
+    h1{font-size:22px;margin:0 0 6px}
+    p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 24px}
+    input{width:100%;padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);font-size:16px;text-align:center;margin-bottom:14px;outline:none}
+    input:focus{border-color:var(--green)}
+    button{width:100%;padding:14px;border:none;border-radius:12px;background:var(--green);color:#04231c;font-size:16px;font-weight:700;cursor:pointer}
+    button:active{opacity:.85}
+    .note{font-size:12px;color:var(--muted);margin-top:18px;line-height:1.5}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">👁️</div>
+    <h1>WA Watcher</h1>
+    <p>קבל התראה על כל הודעה שנשלחה אליך ונמחקה.<br>הזן שם לחשבון שלך ולחץ כניסה — תקבל QR לחיבור.</p>
+    <input id="name" placeholder="שם / כינוי (לדוגמה: michael)" autocomplete="off" />
+    <button id="go">כניסה →</button>
+    <div class="note">⚠️ עובד רק על הודעות שנשלחות <b>למספר שלך</b>. חיבור לא-רשמי — מומלץ מספר ייעודי.</div>
+  </div>
+  <script>
+    function slug(s){return (s||'').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,40)}
+    function go(){
+      let id=slug(document.getElementById('name').value);
+      if(!id){id='user-'+Math.random().toString(36).slice(2,8)}
+      location.href='/u/'+id;
+    }
+    document.getElementById('go').addEventListener('click',go);
+    document.getElementById('name').addEventListener('keydown',e=>{if(e.key==='Enter')go()});
+  </script>
+</body>
+</html>

@@ -41,7 +41,7 @@
   <div class="wrap">
     <div id="qr-box">
       <img id="qr-img" alt="QR" />
-      <p>פתח וואטסאפ › <b>הגדרות</b> › <b>מכשירים מקושרים</b> › <b>קישור מכשיר</b> וסרוק את הקוד.</p>
+      <p>פתח וואטסאפ › <b>הגדרות</b> › <b>מכשירים מקושרים</b> › <b>קישור מכשיר</b> וסרוק את הקוד.<br>הקוד מתחלף — אם נעלם, רענן את הדף.</p>
     </div>
     <div id="main" class="hidden">
       <div class="tabs">
@@ -53,7 +53,10 @@
   </div>
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    // מזהה הלקוח מגיע מה-URL: /u/<id>
+    const userId = location.pathname.split('/u/')[1]?.replace(/\/$/, '') || 'default';
     const socket=io();
+    socket.on('connect',()=>socket.emit('join', userId));
     const qrBox=document.getElementById('qr-box'),qrImg=document.getElementById('qr-img'),main=document.getElementById('main'),statusEl=document.getElementById('status'),feed=document.getElementById('feed'),delCountEl=document.getElementById('del-count');
     let messages=[];const byId={};let currentTab='all',deletedCount=0;
     const typeLabel={text:'טקסט',voice:'🎤 הודעה קולית',audio:'🎵 אודיו',image:'🖼️ תמונה',video:'🎬 וידאו',sticker:'מדבקה',document:'📄 קובץ',contact:'👤 איש קשר',location:'📍 מיקום',unknown:'—'};

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WA Watcher — ניהול</title>
+  <style>
+    :root{--bg:#0b141a;--panel:#111b21;--panel-2:#1f2c33;--green:#00a884;--text:#e9edef;--muted:#8696a0;--red:#f15c6d;--border:#26343d}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    header{background:var(--panel);padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+    header h1{font-size:18px;margin:0}
+    .wrap{max-width:1000px;margin:0 auto;padding:16px}
+    .stats{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+    .stat{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center}
+    .stat .n{font-size:28px;font-weight:700;color:var(--green)}
+    .stat .l{font-size:13px;color:var(--muted);margin-top:4px}
+    table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:12px;overflow:hidden}
+    th,td{padding:12px 14px;text-align:right;font-size:14px;border-bottom:1px solid var(--border)}
+    th{background:var(--panel-2);color:var(--muted);font-weight:600}
+    tr:last-child td{border-bottom:none}
+    .pill{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;background:var(--panel-2);color:var(--muted)}
+    .pill.ok{background:rgba(0,168,132,.2);color:var(--green)}
+    a.open{color:var(--green);text-decoration:none}
+    .login{max-width:360px;margin:80px auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:28px;text-align:center}
+    .login input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);margin:12px 0;text-align:center}
+    .login button{width:100%;padding:12px;border:none;border-radius:10px;background:var(--green);color:#04231c;font-weight:700;cursor:pointer}
+    .del{color:var(--red);font-weight:700}
+  </style>
+</head>
+<body>
+  <div id="login" class="login">
+    <h2>🔐 פאנל ניהול</h2>
+    <input id="key" type="password" placeholder="מפתח ניהול" />
+    <button onclick="load()">כניסה</button>
+  </div>
+
+  <div id="panel" style="display:none">
+    <header><h1>📊 WA Watcher — ניהול</h1><span id="refresh" class="pill" style="cursor:pointer">🔄 רענון</span></header>
+    <div class="wrap">
+      <div class="stats">
+        <div class="stat"><div class="n" id="s-users">0</div><div class="l">לקוחות</div></div>
+        <div class="stat"><div class="n" id="s-connected">0</div><div class="l">מחוברים</div></div>
+        <div class="stat"><div class="n" id="s-msgs">0</div><div class="l">הודעות סה״כ</div></div>
+        <div class="stat"><div class="n" id="s-deleted">0</div><div class="l">נמחקו שנתפסו</div></div>
+      </div>
+      <table>
+        <thead><tr><th>לקוח</th><th>מספר</th><th>סטטוס</th><th>הודעות</th><th>נמחקו</th><th>קישור</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let KEY='';
+    async function load(){
+      KEY=document.getElementById('key').value||KEY;
+      const r=await fetch('/api/admin/users?key='+encodeURIComponent(KEY));
+      if(!r.ok){alert('מפתח שגוי');return}
+      const users=await r.json();
+      document.getElementById('login').style.display='none';
+      document.getElementById('panel').style.display='block';
+      let msgs=0,del=0,conn=0;
+      document.getElementById('rows').innerHTML=users.map(u=>{
+        msgs+=u.msg_count||0;del+=u.deleted_count||0;
+        const isConn=(u.live_status||'').includes('מחובר');if(isConn)conn++;
+        return `<tr><td>${u.name||u.id}</td><td>${u.phone||'—'}</td>
+          <td><span class="pill ${isConn?'ok':''}">${u.live_status||u.status}</span></td>
+          <td>${u.msg_count||0}</td><td class="del">${u.deleted_count||0}</td>
+          <td><a class="open" href="/u/${u.id}" target="_blank">פתח ↗</a></td></tr>`;
+      }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">אין לקוחות עדיין</td></tr>';
+      document.getElementById('s-users').textContent=users.length;
+      document.getElementById('s-connected').textContent=conn;
+      document.getElementById('s-msgs').textContent=msgs;
+      document.getElementById('s-deleted').textContent=del;
+    }
+    document.getElementById('refresh').addEventListener('click',load);
+    document.getElementById('key').addEventListener('keydown',e=>{if(e.key==='Enter')load()});
+  </script>
+</body>
+</html>

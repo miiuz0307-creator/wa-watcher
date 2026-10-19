@@ -1,6 +1,5 @@
-// db.js — שכבת שמירה ב-SQLite
-// שומר כל הודעה נכנסת ברגע שהיא מגיעה, כך שגם אם השולח מוחק אותה אחר כך,
-// הטקסט/המדיה המקוריים כבר אצלנו.
+// db.js — שכבת SQLite רב-משתמשת
+// כל הודעה משויכת ל-user_id (לקוח), כך שכל לקוח רואה רק את ההודעות שלו.
 
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
@@ -8,69 +7,83 @@ import path from 'path';
 import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// שומרים את מסד הנתונים על ה-volume הקבוע (אם קיים), כדי שהודעות שנתפסו לא יאבדו בפריסה
 const DATA_DIR = process.env.DATA_DIR || (fs.existsSync('/app/data') ? '/app/data' : __dirname);
 const db = new Database(path.join(DATA_DIR, 'messages.db'));
 
 db.pragma('journal_mode = WAL');
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS messages (
-    id          TEXT PRIMARY KEY,   -- מזהה ההודעה של וואטסאפ
-    chat_jid    TEXT,               -- מזהה הצ'אט (מספר / קבוצה)
-    sender_jid  TEXT,               -- מי שלח בפועל (חשוב בקבוצות)
-    sender_name TEXT,               -- שם תצוגה אם קיים
-    from_me     INTEGER DEFAULT 0,  -- 1 אם אני שלחתי
-    type        TEXT,               -- text / image / audio / video / sticker / document ...
-    text        TEXT,               -- תוכן טקסטואלי / כיתוב
-    media_path  TEXT,               -- נתיב לקובץ מדיה שהורד (אם יש)
-    timestamp   INTEGER,            -- חותמת זמן (שניות)
-    deleted     INTEGER DEFAULT 0,  -- 1 אם ההודעה נמחקה ע"י השולח
-    deleted_at  INTEGER             -- מתי זוהתה המחיקה
+  CREATE TABLE IF NOT EXISTS users (
+    id          TEXT PRIMARY KEY,   -- מזהה לקוח (בקישור)
+    name        TEXT,               -- שם תצוגה
+    created_at  INTEGER,
+    status      TEXT DEFAULT 'new', -- new / waiting_qr / connected / disconnected
+    phone       TEXT                -- המספר שחובר (אם ידוע)
   );
 
-  CREATE INDEX IF NOT EXISTS idx_chat ON messages(chat_jid);
-  CREATE INDEX IF NOT EXISTS idx_deleted ON messages(deleted);
+  CREATE TABLE IF NOT EXISTS messages (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT,               -- לאיזה לקוח ההודעה שייכת
+    chat_jid    TEXT,
+    sender_jid  TEXT,
+    sender_name TEXT,
+    from_me     INTEGER DEFAULT 0,
+    type        TEXT,
+    text        TEXT,
+    media_path  TEXT,
+    timestamp   INTEGER,
+    deleted     INTEGER DEFAULT 0,
+    deleted_at  INTEGER
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_user ON messages(user_id);
+  CREATE INDEX IF NOT EXISTS idx_user_deleted ON messages(user_id, deleted);
 `);
 
+// ---------- users ----------
+const upsertUserStmt = db.prepare(`
+  INSERT INTO users (id, name, created_at, status)
+  VALUES (@id, @name, @created_at, 'new')
+  ON CONFLICT(id) DO UPDATE SET name = COALESCE(excluded.name, users.name)
+`);
+const setUserStatusStmt = db.prepare(`UPDATE users SET status = @status WHERE id = @id`);
+const setUserPhoneStmt = db.prepare(`UPDATE users SET phone = @phone WHERE id = @id`);
+const getUserStmt = db.prepare(`SELECT * FROM users WHERE id = ?`);
+const allUsersStmt = db.prepare(`
+  SELECT u.*,
+    (SELECT COUNT(*) FROM messages m WHERE m.user_id = u.id) AS msg_count,
+    (SELECT COUNT(*) FROM messages m WHERE m.user_id = u.id AND m.deleted = 1) AS deleted_count
+  FROM users u ORDER BY u.created_at DESC
+`);
+
+// ---------- messages ----------
 const insertStmt = db.prepare(`
   INSERT OR IGNORE INTO messages
-    (id, chat_jid, sender_jid, sender_name, from_me, type, text, media_path, timestamp)
+    (id, user_id, chat_jid, sender_jid, sender_name, from_me, type, text, media_path, timestamp)
   VALUES
-    (@id, @chat_jid, @sender_jid, @sender_name, @from_me, @type, @text, @media_path, @timestamp)
+    (@id, @user_id, @chat_jid, @sender_jid, @sender_name, @from_me, @type, @text, @media_path, @timestamp)
 `);
-
-const markDeletedStmt = db.prepare(`
-  UPDATE messages SET deleted = 1, deleted_at = @deleted_at WHERE id = @id
-`);
-
-const getByIdStmt = db.prepare(`SELECT * FROM messages WHERE id = ?`);
-
-const recentStmt = db.prepare(`
-  SELECT * FROM messages ORDER BY timestamp DESC LIMIT @limit OFFSET @offset
-`);
-
-const deletedStmt = db.prepare(`
-  SELECT * FROM messages WHERE deleted = 1 ORDER BY deleted_at DESC LIMIT @limit
-`);
+const markDeletedStmt = db.prepare(`UPDATE messages SET deleted = 1, deleted_at = @deleted_at WHERE id = @id AND user_id = @user_id`);
+const getByIdStmt = db.prepare(`SELECT * FROM messages WHERE id = ? AND user_id = ?`);
+const recentStmt = db.prepare(`SELECT * FROM messages WHERE user_id = @user_id ORDER BY timestamp DESC LIMIT @limit`);
+const deletedStmt = db.prepare(`SELECT * FROM messages WHERE user_id = @user_id AND deleted = 1 ORDER BY deleted_at DESC LIMIT @limit`);
 
 export const store = {
-  saveMessage(msg) {
-    insertStmt.run(msg);
+  // users
+  upsertUser(id, name = null) { upsertUserStmt.run({ id, name, created_at: Math.floor(Date.now() / 1000) }); },
+  setStatus(id, status) { setUserStatusStmt.run({ id, status }); },
+  setPhone(id, phone) { setUserPhoneStmt.run({ id, phone }); },
+  getUser(id) { return getUserStmt.get(id); },
+  allUsers() { return allUsersStmt.all(); },
+
+  // messages
+  saveMessage(msg) { insertStmt.run(msg); },
+  markDeleted(userId, id) {
+    markDeletedStmt.run({ user_id: userId, id, deleted_at: Math.floor(Date.now() / 1000) });
+    return getByIdStmt.get(id, userId);
   },
-  markDeleted(id) {
-    markDeletedStmt.run({ id, deleted_at: Math.floor(Date.now() / 1000) });
-    return getByIdStmt.get(id); // מחזיר את ההודעה המקורית המלאה
-  },
-  getById(id) {
-    return getByIdStmt.get(id);
-  },
-  recent(limit = 100, offset = 0) {
-    return recentStmt.all({ limit, offset });
-  },
-  deletedOnly(limit = 200) {
-    return deletedStmt.all({ limit });
-  },
+  recent(userId, limit = 100) { return recentStmt.all({ user_id: userId, limit }); },
+  deletedOnly(userId, limit = 200) { return deletedStmt.all({ user_id: userId, limit }); },
 };
 
 export default db;
