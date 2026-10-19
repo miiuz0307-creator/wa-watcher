@@ -9,7 +9,9 @@
     *{box-sizing:border-box}
     body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
     header{background:var(--panel);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
-    header h1{font-size:18px;margin:0}
+    header h1{font-size:18px;margin:0;display:flex;align-items:center;gap:8px}
+    .acct{font-size:13px;color:var(--muted);font-weight:400;cursor:pointer;background:var(--panel-2);padding:3px 10px;border-radius:12px}
+    .acct:hover{color:var(--green)}
     .status{font-size:13px;color:var(--muted);background:var(--panel-2);padding:6px 12px;border-radius:20px}
     .status.ok{color:var(--green)}
     .wrap{max-width:920px;margin:0 auto;padding:16px}
@@ -41,7 +43,7 @@
   </style>
 </head>
 <body>
-  <header><h1>👁️ WA Watcher</h1><div class="status" id="status">מתחבר...</div></header>
+  <header><h1>👁️ WA Watcher <span id="acct" class="acct"></span></h1><div class="status" id="status">מתחבר...</div></header>
   <div class="wrap">
     <div id="qr-box">
       <img id="qr-img" alt="QR" />
@@ -62,10 +64,18 @@
   </div>
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // מזהה הלקוח מגיע מה-URL: /u/<id>
+    // מזהה הלקוח מגיע מה-URL: /u/<id> , והשם מה-query ?n=
     const userId = location.pathname.split('/u/')[1]?.replace(/\/$/, '') || 'default';
+    const chosenName = new URLSearchParams(location.search).get('n') || null;
     const socket=io();
-    socket.on('connect',()=>socket.emit('join', userId));
+    socket.on('connect',()=>socket.emit('join', { id: userId, name: chosenName }));
+    // הצגת שם החשבון + שינוי שם בלחיצה
+    const acctEl=document.getElementById('acct');
+    socket.on('name',n=>{acctEl.textContent='('+(n||userId)+') ✏️';acctEl.title='לחץ לשינוי שם'});
+    acctEl.addEventListener('click',()=>{
+      const nn=prompt('שם לחשבון הזה:',acctEl.textContent.replace(/^\(|\) ✏️$/g,''));
+      if(nn!==null)fetch('/api/'+userId+'/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nn})});
+    });
     const qrBox=document.getElementById('qr-box'),qrImg=document.getElementById('qr-img'),main=document.getElementById('main'),statusEl=document.getElementById('status'),feed=document.getElementById('feed'),delCountEl=document.getElementById('del-count');
     let messages=[];const byId={};let currentTab='all',deletedCount=0;
     const typeLabel={text:'טקסט',voice:'🎤 הודעה קולית',audio:'🎵 אודיו',image:'🖼️ תמונה',video:'🎬 וידאו',sticker:'מדבקה',document:'📄 קובץ',contact:'👤 איש קשר',location:'📍 מיקום',unknown:'—'};

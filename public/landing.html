@@ -31,9 +31,11 @@
   <script>
     function slug(s){return (s||'').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,40)}
     function go(){
-      let id=slug(document.getElementById('name').value);
+      const raw=(document.getElementById('name').value||'').trim();
+      let id=slug(raw);
       if(!id){id='user-'+Math.random().toString(36).slice(2,8)}
-      location.href='/u/'+id;
+      // מעבירים את השם שנבחר כדי שיישמר ויוצג (תומך גם בעברית)
+      location.href='/u/'+id+(raw?('?n='+encodeURIComponent(raw)):'');
     }
     document.getElementById('go').addEventListener('click',go);
     document.getElementById('name').addEventListener('keydown',e=>{if(e.key==='Enter')go()});

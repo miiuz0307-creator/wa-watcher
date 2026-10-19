@@ -187,11 +187,14 @@ async function startSession(userId) {
 
 // ---------- Socket.IO: כל לקוח מצטרף ל"חדר" משלו ----------
 io.on('connection', (socket) => {
-  socket.on('join', async (rawId) => {
+  socket.on('join', async (payload) => {
+    const rawId = typeof payload === 'object' && payload ? payload.id : payload;
+    const name = typeof payload === 'object' && payload ? payload.name : null;
     const userId = cleanId(rawId);
     if (!userId) return;
     socket.join(userId);
-    store.upsertUser(userId);
+    store.upsertUser(userId, name || null);
+    socket.emit('name', store.getUser(userId)?.name || userId);
     // היסטוריה + QR נוכחי
     socket.emit('history', store.recent(userId, 100));
     socket.emit('settings', store.getSettings(userId));
@@ -206,6 +209,14 @@ io.on('connection', (socket) => {
 app.get('/api/:userId/messages', (req, res) => res.json(store.recent(cleanId(req.params.userId), 100)));
 app.get('/api/:userId/deleted', (req, res) => res.json(store.deletedOnly(cleanId(req.params.userId))));
 // הגדרות מקור (פרטי / קבוצות)
+// שינוי שם תצוגה לחשבון
+app.post('/api/:userId/name', (req, res) => {
+  const id = cleanId(req.params.userId);
+  store.upsertUser(id, (req.body.name || '').trim() || null);
+  const name = store.getUser(id)?.name || id;
+  io.to(id).emit('name', name);
+  res.json({ name });
+});
 app.get('/api/:userId/settings', (req, res) => res.json(store.getSettings(cleanId(req.params.userId))));
 app.post('/api/:userId/settings', (req, res) => {
   const id = cleanId(req.params.userId);
