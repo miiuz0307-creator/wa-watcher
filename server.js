@@ -211,10 +211,29 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'landing.
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 app.get('/u/:userId', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
+// ---------- הגירה מגרסה חד-משתמשת: creds ישירות ב-auth/ → auth/michael/ ----------
+function migrateLegacyAuth() {
+  try {
+    const legacyCreds = path.join(AUTH_ROOT, 'creds.json');
+    if (fs.existsSync(legacyCreds)) {
+      const dest = path.join(AUTH_ROOT, 'michael');
+      if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+      for (const f of fs.readdirSync(AUTH_ROOT)) {
+        const src = path.join(AUTH_ROOT, f);
+        if (fs.statSync(src).isFile()) fs.renameSync(src, path.join(dest, f));
+      }
+      store.upsertUser('michael', 'Michael');
+      console.log('♻️ הועבר הסשן הקיים ל-user: michael');
+    }
+  } catch (e) { console.warn('migrateLegacyAuth:', e.message); }
+}
+
 // ---------- חידוש אוטומטי של סשנים מחוברים בעליית השרת ----------
 function resumeSessions() {
   try {
     for (const dir of fs.readdirSync(AUTH_ROOT)) {
+      const full = path.join(AUTH_ROOT, dir);
+      if (!fs.statSync(full).isDirectory()) continue;
       const credsPath = path.join(AUTH_ROOT, dir, 'creds.json');
       if (fs.existsSync(credsPath)) {
         console.log(`♻️ מחדש סשן: ${dir}`);
@@ -230,5 +249,6 @@ const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`\n🌐 השרת רץ על פורט ${PORT}`);
   console.log(`   פאנל ניהול: /admin   (מפתח: ${ADMIN_KEY})\n`);
+  migrateLegacyAuth();
   resumeSessions();
 });
