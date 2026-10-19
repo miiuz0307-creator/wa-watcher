@@ -5,9 +5,12 @@
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const db = new Database(path.join(__dirname, 'messages.db'));
+// שומרים את מסד הנתונים על ה-volume הקבוע (אם קיים), כדי שהודעות שנתפסו לא יאבדו בפריסה
+const DATA_DIR = process.env.DATA_DIR || (fs.existsSync('/app/data') ? '/app/data' : __dirname);
+const db = new Database(path.join(DATA_DIR, 'messages.db'));
 
 db.pragma('journal_mode = WAL');
 

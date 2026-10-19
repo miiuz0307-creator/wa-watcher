@@ -18,13 +18,18 @@ import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
   downloadMediaMessage,
+  fetchLatestBaileysVersion,
+  Browsers,
 } from '@whiskeysockets/baileys';
 
 import { store } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MEDIA_DIR = path.join(__dirname, 'media');
-const AUTH_DIR = path.join(__dirname, 'auth');
+// נתונים קבועים: על Railway מותקן volume ב-/app/data — שומרים שם את ההתחברות
+// והמדיה כדי שלא צריך לסרוק QR מחדש בכל פריסה. מקומית — נשמר בתיקיית הפרויקט.
+const DATA_DIR = process.env.DATA_DIR || (fs.existsSync('/app/data') ? '/app/data' : __dirname);
+const MEDIA_DIR = path.join(DATA_DIR, 'media');
+const AUTH_DIR = path.join(DATA_DIR, 'auth');
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
 const logger = pino({ level: 'warn' });
@@ -97,11 +102,17 @@ const MEDIA_TYPES = ['image', 'video', 'audio', 'voice', 'sticker', 'document'];
 // ---------- החיבור לוואטסאפ ----------
 async function startWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  // משיכת גרסת הפרוטוקול העדכנית של וואטסאפ — בלעדיה ההתחברות נכשלת (קוד 408)
+  // וה-QR לא נוצר. זה היה הבאג.
+  const { version } = await fetchLatestBaileysVersion();
+  console.log('גרסת WhatsApp:', version.join('.'));
 
   const sock = makeWASocket({
+    version,
     auth: state,
     logger,
     printQRInTerminal: false,
+    browser: Browsers.ubuntu('Chrome'), // מזהה מכשיר — נדרש כדי שהשרת ינפיק QR
     markOnlineOnConnect: false, // לא "להדליק" נוכחות — נשאר דיסקרטי
   });
 
