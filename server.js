@@ -22,6 +22,7 @@ import makeWASocket, {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   Browsers,
+  getContentType,
 } from 'baileys';
 
 import { store } from './db.js';
@@ -65,34 +66,34 @@ function transcodeToMp3(inPath, outPath) {
   });
 }
 
-// פותח עטיפות של הודעות "נעלמות" / חד-פעמיות / נערכות, כדי לחלץ את התוכן האמיתי
-function unwrap(msg, depth = 0) {
-  if (!msg || depth > 5) return msg || {};
-  const inner = msg.ephemeralMessage?.message
-    || msg.viewOnceMessage?.message
-    || msg.viewOnceMessageV2?.message
-    || msg.viewOnceMessageV2Extension?.message
-    || msg.documentWithCaptionMessage?.message
-    || msg.editedMessage?.message
-    || msg.protocolMessage?.editedMessage;
-  return inner ? unwrap(inner, depth + 1) : msg;
+// עטיפות שפותחים כדי להגיע לתוכן האמיתי (חד-פעמי / נעלם / נערך)
+const WRAPPERS = new Set(['viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'ephemeralMessage', 'documentWithCaptionMessage', 'editedMessage']);
+function unwrap(message, depth = 0) {
+  if (!message || depth > 6) return message || {};
+  const t = getContentType(message);
+  if (WRAPPERS.has(t) && message[t]?.message) return unwrap(message[t].message, depth + 1);
+  return message;
 }
 
 function extractContent(m) {
   const orig = m.message || {};
   const voWrapper = !!(orig.viewOnceMessage || orig.viewOnceMessageV2 || orig.viewOnceMessageV2Extension);
   const msg = unwrap(orig);
-  const viewOnce = voWrapper || !!(msg.imageMessage?.viewOnce || msg.videoMessage?.viewOnce || msg.audioMessage?.viewOnce);
+  const ct = getContentType(msg); // זיהוי אמין של סוג התוכן ע"י Baileys
   let type = 'unknown', text = '';
-  if (msg.conversation) { type = 'text'; text = msg.conversation; }
-  else if (msg.extendedTextMessage) { type = 'text'; text = msg.extendedTextMessage.text || ''; }
-  else if (msg.imageMessage) { type = 'image'; text = msg.imageMessage.caption || ''; }
-  else if (msg.videoMessage) { type = 'video'; text = msg.videoMessage.caption || ''; }
-  else if (msg.audioMessage) { type = msg.audioMessage.ptt ? 'voice' : 'audio'; }
-  else if (msg.stickerMessage) { type = 'sticker'; }
-  else if (msg.documentMessage) { type = 'document'; text = msg.documentMessage.fileName || ''; }
-  else if (msg.contactMessage) { type = 'contact'; text = msg.contactMessage.displayName || ''; }
-  else if (msg.locationMessage) { type = 'location'; text = `${msg.locationMessage.degreesLatitude}, ${msg.locationMessage.degreesLongitude}`; }
+  switch (ct) {
+    case 'conversation': type = 'text'; text = msg.conversation || ''; break;
+    case 'extendedTextMessage': type = 'text'; text = msg.extendedTextMessage?.text || ''; break;
+    case 'imageMessage': type = 'image'; text = msg.imageMessage?.caption || ''; break;
+    case 'videoMessage': type = 'video'; text = msg.videoMessage?.caption || ''; break;
+    case 'audioMessage': type = msg.audioMessage?.ptt ? 'voice' : 'audio'; break;
+    case 'stickerMessage': type = 'sticker'; break;
+    case 'documentMessage': type = 'document'; text = msg.documentMessage?.fileName || ''; break;
+    case 'contactMessage': type = 'contact'; text = msg.contactMessage?.displayName || ''; break;
+    case 'locationMessage': type = 'location'; text = `${msg.locationMessage?.degreesLatitude}, ${msg.locationMessage?.degreesLongitude}`; break;
+  }
+  const viewOnce = voWrapper || !!(msg.imageMessage?.viewOnce || msg.videoMessage?.viewOnce || msg.audioMessage?.viewOnce);
+  if (type === 'unknown' && (voWrapper || ct)) console.log(`❓ סוג לא מזוהה: ct=${ct} keys=${Object.keys(msg).join(',')}`);
   return { type, text, viewOnce };
 }
 
