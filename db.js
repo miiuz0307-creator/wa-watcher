@@ -91,7 +91,10 @@ const insertStmt = db.prepare(`
 const markDeletedStmt = db.prepare(`UPDATE messages SET deleted = 1, deleted_at = @deleted_at WHERE id = @id AND user_id = @user_id`);
 const getByIdStmt = db.prepare(`SELECT * FROM messages WHERE id = ? AND user_id = ?`);
 const recentStmt = db.prepare(`SELECT * FROM messages WHERE user_id = @user_id ORDER BY timestamp DESC LIMIT @limit`);
-const deletedStmt = db.prepare(`SELECT * FROM messages WHERE user_id = @user_id AND deleted = 1 ORDER BY deleted_at DESC LIMIT @limit`);
+const deletedStmt = db.prepare(`SELECT * FROM messages WHERE user_id = @user_id AND deleted = 1 ORDER BY COALESCE(deleted_at, timestamp) DESC LIMIT @limit`);
+// ניקוי יומי: הודעות כלליות (לא נמחקו) ישנות מ-cutoff. את הנמחקות שומרים לנצח.
+const purgeMediaStmt = db.prepare(`SELECT media_path FROM messages WHERE deleted = 0 AND timestamp < @cutoff AND media_path IS NOT NULL`);
+const purgeStmt = db.prepare(`DELETE FROM messages WHERE deleted = 0 AND timestamp < @cutoff`);
 
 export const store = {
   // users
@@ -115,7 +118,13 @@ export const store = {
     return getByIdStmt.get(id, userId);
   },
   recent(userId, limit = 100) { return recentStmt.all({ user_id: userId, limit }); },
-  deletedOnly(userId, limit = 200) { return deletedStmt.all({ user_id: userId, limit }); },
+  deletedOnly(userId, limit = 1000) { return deletedStmt.all({ user_id: userId, limit }); },
+  // מחיקת הודעות כלליות ישנות; מחזיר כמה נמחקו ואת נתיבי המדיה לניקוי
+  purgeOldGeneral(cutoff) {
+    const media = purgeMediaStmt.all({ cutoff }).map(r => r.media_path);
+    const info = purgeStmt.run({ cutoff });
+    return { count: info.changes, media };
+  },
 };
 
 export default db;

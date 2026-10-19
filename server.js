@@ -236,6 +236,7 @@ io.on('connection', (socket) => {
     socket.emit('name', store.getUser(userId)?.name || userId);
     // היסטוריה + QR נוכחי
     socket.emit('history', store.recent(userId, 100));
+    socket.emit('deletedList', store.deletedOnly(userId, 1000)); // נטען בנפרד כדי שישרוד רענון
     socket.emit('settings', store.getSettings(userId));
     const sess = sessions[userId];
     if (sess?.qr) socket.emit('qr', sess.qr);
@@ -311,6 +312,18 @@ function resumeSessions() {
   } catch (e) { console.warn('resumeSessions:', e.message); }
 }
 
+// ---------- ניקוי יומי: מוחק הודעות כלליות ישנות, שומר רק את הנמחקות ----------
+// משאירים חלון של 24 שעות כדי שעדיין נוכל לזהות מחיקה של הודעה טרייה.
+function dailyCleanup() {
+  const cutoff = Math.floor(Date.now() / 1000) - 24 * 3600;
+  const { count, media } = store.purgeOldGeneral(cutoff);
+  for (const mp of media) {
+    if (!mp) continue;
+    try { fs.unlinkSync(path.join(MEDIA_DIR, mp.replace('/media/', ''))); } catch {}
+  }
+  if (count) console.log(`🧹 נוקו ${count} הודעות כלליות ישנות (הנמחקות נשמרו)`);
+}
+
 // ---------- הפעלה ----------
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
@@ -318,4 +331,6 @@ httpServer.listen(PORT, () => {
   console.log(`   פאנל ניהול: /admin   (מפתח: ${ADMIN_KEY})\n`);
   migrateLegacyAuth();
   resumeSessions();
+  dailyCleanup();
+  setInterval(dailyCleanup, 6 * 3600 * 1000); // כל 6 שעות
 });
