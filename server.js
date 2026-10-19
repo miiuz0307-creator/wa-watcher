@@ -93,7 +93,7 @@ function extractContent(m) {
     case 'locationMessage': type = 'location'; text = `${msg.locationMessage?.degreesLatitude}, ${msg.locationMessage?.degreesLongitude}`; break;
   }
   const viewOnce = voWrapper || !!(msg.imageMessage?.viewOnce || msg.videoMessage?.viewOnce || msg.audioMessage?.viewOnce);
-  if (type === 'unknown' && (voWrapper || ct)) console.log(`❓ סוג לא מזוהה: ct=${ct} keys=${Object.keys(msg).join(',')}`);
+  if (type === 'unknown' && voWrapper) console.log(`❓ חד-פעמית לא מזוהה: ct=${ct} keys=${Object.keys(msg).join(',')}`);
   return { type, text, viewOnce };
 }
 
@@ -170,8 +170,13 @@ async function startSession(userId) {
       if (!m.message) continue;
       const id = m.key.id;
       const chat_jid = m.key.remoteJid || '';
-      // סינון לפי הגדרות המשתמש: פרטי / קבוצות
       const isGroup = chat_jid.endsWith('@g.us');
+      // עקיבה זמנית: כל הודעה "משמעותית" שנכנסת (לא תגובות/התראות)
+      const topCt = getContentType(m.message || {});
+      if (topCt && !['reactionMessage', 'protocolMessage', 'pollUpdateMessage', 'senderKeyDistributionMessage'].includes(topCt)) {
+        console.log(`📥 [${userId}] נכנס: ${topCt} | group=${isGroup} | fromMe=${m.key.fromMe}`);
+      }
+      // סינון לפי הגדרות המשתמש: פרטי / קבוצות
       const st = store.getSettings(userId);
       if (isGroup && !st.capture_groups) continue;
       if (!isGroup && !st.capture_private) continue;
