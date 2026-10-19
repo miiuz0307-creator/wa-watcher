@@ -13,6 +13,7 @@ import path from 'path';
 import fs from 'fs';
 import pino from 'pino';
 import qrcode from 'qrcode';
+import qrcodeTerminal from 'qrcode-terminal';
 
 import makeWASocket, {
   useMultiFileAuthState,
@@ -134,6 +135,9 @@ async function startWhatsApp() {
       connectionState = 'סרוק את ה-QR דרך וואטסאפ › מכשירים מקושרים';
       io.emit('qr', currentQR);
       io.emit('status', connectionState);
+      // גם בטרמינל — כדי שאפשר יהיה לסרוק ישירות בלי דפדפן
+      console.log('\n📱 סרוק את ה-QR הזה דרך וואטסאפ ← מכשירים מקושרים ← קישור מכשיר:\n');
+      qrcodeTerminal.generate(qr, { small: true });
     }
 
     if (connection === 'open') {
