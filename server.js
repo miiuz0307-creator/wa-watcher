@@ -171,11 +171,6 @@ async function startSession(userId) {
       const id = m.key.id;
       const chat_jid = m.key.remoteJid || '';
       const isGroup = chat_jid.endsWith('@g.us');
-      // עקיבה זמנית: כל הודעה "משמעותית" שנכנסת (לא תגובות/התראות)
-      const topCt = getContentType(m.message || {});
-      if (topCt && !['reactionMessage', 'protocolMessage', 'pollUpdateMessage', 'senderKeyDistributionMessage'].includes(topCt)) {
-        console.log(`📥 [${userId}] נכנס: ${topCt} | group=${isGroup} | fromMe=${m.key.fromMe}`);
-      }
       // סינון לפי הגדרות המשתמש: פרטי / קבוצות
       const st = store.getSettings(userId);
       if (isGroup && !st.capture_groups) continue;
