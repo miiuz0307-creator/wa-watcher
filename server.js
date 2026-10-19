@@ -51,8 +51,21 @@ function cleanId(id = '') { return String(id).replace(/[^a-zA-Z0-9_-]/g, '').sli
 
 const MEDIA_TYPES = ['image', 'video', 'audio', 'voice', 'sticker', 'document'];
 
+// פותח עטיפות של הודעות "נעלמות" / חד-פעמיות / נערכות, כדי לחלץ את התוכן האמיתי
+function unwrap(msg, depth = 0) {
+  if (!msg || depth > 5) return msg || {};
+  const inner = msg.ephemeralMessage?.message
+    || msg.viewOnceMessage?.message
+    || msg.viewOnceMessageV2?.message
+    || msg.viewOnceMessageV2Extension?.message
+    || msg.documentWithCaptionMessage?.message
+    || msg.editedMessage?.message
+    || msg.protocolMessage?.editedMessage;
+  return inner ? unwrap(inner, depth + 1) : msg;
+}
+
 function extractContent(m) {
-  const msg = m.message || {};
+  const msg = unwrap(m.message || {});
   let type = 'unknown', text = '';
   if (msg.conversation) { type = 'text'; text = msg.conversation; }
   else if (msg.extendedTextMessage) { type = 'text'; text = msg.extendedTextMessage.text || ''; }

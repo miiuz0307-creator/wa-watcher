@@ -83,7 +83,15 @@
     function cleanJid(j=''){return j.replace('@s.whatsapp.net','').replace('@g.us',' (קבוצה)').replace('@lid','')}
     function mediaHtml(m){if(!m.media_path)return'';if(m.type==='voice'||m.type==='audio')return`<audio controls src="${m.media_path}"></audio>`;if(m.type==='image'||m.type==='sticker')return`<img src="${m.media_path}"/>`;if(m.type==='video')return`<video controls src="${m.media_path}"></video>`;if(m.type==='document')return`<a href="${m.media_path}" download style="color:var(--green)">הורדת הקובץ</a>`;return''}
     function escapeHtml(s=''){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-    function render(){const list=currentTab==='deleted'?messages.filter(m=>m.deleted):messages;if(!list.length){feed.innerHTML='<div class="empty">אין הודעות עדיין</div>';return}feed.innerHTML=list.map(m=>{const who=m.from_me?'אני':(m.sender_name||cleanJid(m.sender_jid));const label=typeLabel[m.type]||m.type;return`<div class="msg ${m.deleted?'deleted':''}"><div class="top"><span class="who">${who}</span><span class="time">${fmtTime(m.timestamp)}</span></div><div class="body">${m.text?escapeHtml(m.text):''}<span class="badge ${m.deleted?'del':''}">${m.deleted?'🗑️ נמחקה — זה מה שהיה כתוב':label}</span></div>${mediaHtml(m)}</div>`}).join('')}
+    function render(){const list=currentTab==='deleted'?messages.filter(m=>m.deleted):messages;if(!list.length){feed.innerHTML='<div class="empty">אין הודעות עדיין</div>';return}feed.innerHTML=list.map(m=>{
+      const who=m.from_me?'אני':(m.sender_name||cleanJid(m.sender_jid));
+      const label=typeLabel[m.type]||m.type;
+      // תוכן הגוף: טקסט אם יש; אחרת, אם אין גם מדיה, מציגים את סוג ההודעה כדי שלא יהיה ריק
+      let body=m.text?escapeHtml(m.text):'';
+      if(!body&&!m.media_path){body=`<span style="color:var(--muted)">${label}${m.deleted?' (התוכן לא נשמר)':''}</span>`;}
+      const badge=m.deleted?'🗑️ נמחקה':label;
+      return`<div class="msg ${m.deleted?'deleted':''}"><div class="top"><span class="who">${who}</span><span class="time">${fmtTime(m.timestamp)}</span></div><div class="body">${body} <span class="badge ${m.deleted?'del':''}">${badge}</span></div>${mediaHtml(m)}</div>`;
+    }).join('')}
     function upsert(m){if(byId[m.id]){Object.assign(byId[m.id],m)}else{byId[m.id]=m;messages.unshift(m)}}
     socket.on('qr',d=>{qrImg.src=d;qrBox.classList.remove('hidden');main.classList.add('hidden')});
     socket.on('status',s=>{statusEl.textContent=s;statusEl.classList.toggle('ok',s.includes('מחובר'))});
