@@ -100,6 +100,7 @@ function extractContent(m) {
 const MEDIA_TYPES = ['image', 'video', 'audio', 'voice', 'sticker', 'document'];
 
 // ---------- החיבור לוואטסאפ ----------
+let reconnecting = false;
 async function startWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   // משיכת גרסת הפרוטוקול העדכנית של וואטסאפ — בלעדיה ההתחברות נכשלת (קוד 408)
@@ -114,6 +115,12 @@ async function startWhatsApp() {
     printQRInTerminal: false,
     browser: Browsers.ubuntu('Chrome'), // מזהה מכשיר — נדרש כדי שהשרת ינפיק QR
     markOnlineOnConnect: false, // לא "להדליק" נוכחות — נשאר דיסקרטי
+    connectTimeoutMs: 60000,        // זמן ארוך יותר לחיבור — מונע 408 מוקדם
+    keepAliveIntervalMs: 15000,     // ping תכוף יותר לשמירת החיבור
+    defaultQueryTimeoutMs: undefined, // בלי timeout אגרסיבי על שאילתות
+    retryRequestDelayMs: 2000,
+    qrTimeout: 60000,               // חלון ארוך יותר להצגת ה-QR
+    syncFullHistory: false,
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -143,7 +150,11 @@ async function startWhatsApp() {
       connectionState = '🔌 נותק' + (shouldReconnect ? ' — מתחבר מחדש...' : ' (יצאת מהמכשירים המקושרים)');
       io.emit('status', connectionState);
       console.log('נותק. קוד:', code, 'מתחבר מחדש:', shouldReconnect);
-      if (shouldReconnect) startWhatsApp();
+      // השהיה קצרה לפני חיבור מחדש, ומניעת סוקטים כפולים שהורגים זה את זה
+      if (shouldReconnect && !reconnecting) {
+        reconnecting = true;
+        setTimeout(() => { reconnecting = false; startWhatsApp().catch(console.error); }, 3000);
+      }
     }
   });
 
