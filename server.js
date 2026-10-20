@@ -184,7 +184,8 @@ async function startSession(userId) {
       if (viewOnce && !st.save_viewonce) continue;
 
       let media_path = null;
-      if (MEDIA_TYPES.includes(msgType)) {
+      // מורידים מדיה רק מהודעות פרטיות — מדיה מקבוצות מילאה את האחסון ולא נשמרת
+      if (MEDIA_TYPES.includes(msgType) && !isGroup) {
         try {
           // מורידים מההודעה ה"פתוחה" (ללא עטיפת view-once/ephemeral) כדי שגם מדיה חד-פעמית תרד
           const mForDl = { key: m.key, message: unwrap(m.message || {}) };
@@ -322,6 +323,19 @@ function resumeSessions() {
   } catch (e) { console.warn('resumeSessions:', e.message); }
 }
 
+// ---------- שחרור מקום בעלייה: מוחק קבצי מדיה (האחסון התמלא מהם) ----------
+// רץ לפני כל כתיבה ל-DB, כדי לשבור לולאת קריסה של "disk is full".
+function freeDiskOnBoot() {
+  try {
+    let removed = 0, bytes = 0;
+    for (const f of fs.readdirSync(MEDIA_DIR)) {
+      const fp = path.join(MEDIA_DIR, f);
+      try { const st = fs.statSync(fp); fs.unlinkSync(fp); removed++; bytes += st.size; } catch {}
+    }
+    if (removed) console.log(`🧹 שוחרר מקום: נמחקו ${removed} קבצי מדיה (${(bytes / 1048576).toFixed(0)}MB)`);
+  } catch (e) { console.warn('freeDiskOnBoot:', e.message); }
+}
+
 // ---------- ניקוי יומי: מוחק הודעות כלליות ישנות, שומר רק את הנמחקות ----------
 // משאירים חלון של 24 שעות כדי שעדיין נוכל לזהות מחיקה של הודעה טרייה.
 function dailyCleanup() {
@@ -339,8 +353,9 @@ const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`\n🌐 השרת רץ על פורט ${PORT}`);
   console.log(`   פאנל ניהול: /admin   (מפתח: ${ADMIN_KEY})\n`);
+  freeDiskOnBoot();   // קודם משחררים מקום כדי שה-DB יוכל לכתוב
+  dailyCleanup();     // מנקים הודעות כלליות ישנות מה-DB
   migrateLegacyAuth();
   resumeSessions();
-  dailyCleanup();
-  setInterval(dailyCleanup, 6 * 3600 * 1000); // כל 6 שעות
+  setInterval(dailyCleanup, 3600 * 1000); // כל שעה
 });
