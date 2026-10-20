@@ -234,6 +234,20 @@ async function startSession(userId) {
   return sess;
 }
 
+// איפוס סשן: מנתק, מוחק את ההתחברות השמורה, ומתחיל מחדש כדי להציג QR חדש לסריקה
+async function resetSession(rawId) {
+  const userId = cleanId(rawId);
+  if (!userId) return;
+  const sess = sessions[userId];
+  try { await sess?.sock?.logout?.(); } catch {}
+  try { sess?.sock?.end?.(new Error('reset')); } catch {}
+  delete sessions[userId];
+  try { fs.rmSync(path.join(AUTH_ROOT, userId), { recursive: true, force: true }); } catch {}
+  store.setStatus(userId, 'waiting_qr');
+  io.to(userId).emit('status', 'מתחבר מחדש — יופיע QR לסריקה...');
+  await startSession(userId); // ייצר QR חדש
+}
+
 // ---------- Socket.IO: כל לקוח מצטרף ל"חדר" משלו ----------
 io.on('connection', (socket) => {
   socket.on('join', async (payload) => {
@@ -261,6 +275,12 @@ app.get('/api/:userId/messages', (req, res) => res.json(store.recent(cleanId(req
 app.get('/api/:userId/deleted', (req, res) => res.json(store.deletedOnly(cleanId(req.params.userId))));
 // הגדרות מקור (פרטי / קבוצות)
 // שינוי שם תצוגה לחשבון
+// איפוס / סריקה מחדש
+app.post('/api/:userId/reset', async (req, res) => {
+  const id = cleanId(req.params.userId);
+  try { await resetSession(id); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.post('/api/:userId/name', (req, res) => {
   const id = cleanId(req.params.userId);
   store.upsertUser(id, (req.body.name || '').trim() || null);

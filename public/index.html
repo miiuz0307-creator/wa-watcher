@@ -12,6 +12,8 @@
     header h1{font-size:18px;margin:0;display:flex;align-items:center;gap:8px}
     .acct{font-size:13px;color:var(--muted);font-weight:400;cursor:pointer;background:var(--panel-2);padding:3px 10px;border-radius:12px}
     .acct:hover{color:var(--green)}
+    .rescan{background:var(--panel-2);color:var(--muted);border:1px solid var(--border);border-radius:16px;padding:5px 12px;font-size:12px;cursor:pointer}
+    .rescan:hover{color:var(--green);border-color:var(--green)}
     .status{font-size:13px;color:var(--muted);background:var(--panel-2);padding:6px 12px;border-radius:20px}
     .status.ok{color:var(--green)}
     .wrap{max-width:920px;margin:0 auto;padding:16px}
@@ -46,7 +48,7 @@
   </style>
 </head>
 <body>
-  <header><h1>👁️ WA Watcher <span id="acct" class="acct"></span></h1><div class="status" id="status">מתחבר...</div></header>
+  <header><h1>👁️ WA Watcher <span id="acct" class="acct"></span></h1><div style="display:flex;align-items:center;gap:8px"><button id="rescan" class="rescan">🔄 סרוק מחדש</button><div class="status" id="status">מתחבר...</div></div></header>
   <div class="wrap">
     <div id="qr-box">
       <img id="qr-img" alt="QR" />
@@ -138,6 +140,12 @@
     capPriv.addEventListener('change',saveSettings);
     capGrp.addEventListener('change',saveSettings);
     saveVo.addEventListener('change',saveSettings);
+    // סריקה מחדש — מנקה את החיבור הישן ומציג QR חדש
+    document.getElementById('rescan').addEventListener('click',()=>{
+      if(!confirm('לנתק ולסרוק מחדש? יופיע QR חדש לסריקה.'))return;
+      statusEl.textContent='מאפס...';
+      fetch('/api/'+userId+'/reset',{method:'POST'}).then(()=>{setTimeout(()=>location.reload(),1500)});
+    });
   </script>
 </body>
 </html>
