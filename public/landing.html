@@ -38,18 +38,16 @@
     <div class="note">⚠️ עובד רק על הודעות שנשלחות <b>למספר שלך</b>. חיבור לא-רשמי — מומלץ מספר ייעודי.</div>
   </div>
   <script>
-    function slug(s){return (s||'').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,40)}
-    // זיהוי יציב מתוך שם (גם עברית) — אותו שם תמיד נותן אותו מזהה
-    function hashStr(s){let h=5381;for(let i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))>>>0}return h.toString(36)}
-    function idFromName(raw){
-      let id=slug(raw);
-      if(!id){ id = raw ? ('u'+hashStr(raw)) : ('user-'+Math.random().toString(36).slice(2,8)); }
-      return id;
+    // כל חשבון מקבל מזהה ייחודי אקראי (לא מהשם!) — כך ששני אנשים עם אותו כינוי
+    // לא ייפלו על אותו חשבון. הכינוי הוא שם תצוגה בלבד. המכשיר זוכר את החשבון.
+    function newId(){
+      return 'u-' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
     }
     // אם כבר נכנסת פעם — נלך ישר לחשבון שלך בלי לשאול שם שוב
     try{
       const wantNew = location.search.indexOf('switch')>=0 || location.hash.indexOf('switch')>=0;
-      const saved=localStorage.getItem('wa_account');
+      if(wantNew){ try{localStorage.removeItem('wa_account');localStorage.removeItem('wa_name')}catch(e){} }
+      const saved=wantNew?null:localStorage.getItem('wa_account');
       if(saved && !wantNew){
         const nm=(localStorage.getItem('wa_name')||'').trim();
         const ov=document.createElement('div');
@@ -65,8 +63,11 @@
     }catch(e){}
     function go(){
       const raw=(document.getElementById('name').value||'').trim();
-      const id=idFromName(raw);
-      try{ localStorage.setItem('wa_account', id); }catch(e){}
+      // אם כבר יש חשבון שמור במכשיר — משתמשים בו (לא יוצרים חדש בכל כניסה)
+      let id=null;
+      try{ id=localStorage.getItem('wa_account'); }catch(e){}
+      if(!id){ id=newId(); }
+      try{ localStorage.setItem('wa_account', id); if(raw) localStorage.setItem('wa_name', raw); }catch(e){}
       // מעבירים את השם שנבחר כדי שיישמר ויוצג (תומך גם בעברית)
       location.href='/u/'+id+(raw?('?n='+encodeURIComponent(raw)):'');
     }
