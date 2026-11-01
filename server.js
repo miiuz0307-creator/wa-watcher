@@ -50,13 +50,35 @@ try {
 
 async function sendPush(userId, original) {
   if (!vapid) return;
-  const who = original.sender_name || (original.sender_jid || '').replace('@s.whatsapp.net', '').replace('@g.us', '');
+  const isGroup = (original.chat_jid || '').endsWith('@g.us');
+  let who = original.sender_name || (original.sender_phone ? '+' + original.sender_phone : '');
+  if (isGroup && original.chat_name) who = '👥 ' + original.chat_name + (who ? ' · ' + who : '');
   const body = original.text ? original.text : 'נמחקה הודעת ' + (original.type || 'מדיה');
   const payload = JSON.stringify({ title: '🗑️ הודעה נמחקה' + (who ? ' — ' + who : ''), body, userId });
   for (const sub of store.getSubs(userId)) {
     try { await webpush.sendNotification(sub, payload); }
     catch (e) { if (e.statusCode === 404 || e.statusCode === 410) store.removeSub(sub.endpoint); }
   }
+}
+
+// מוציא מספר טלפון (ספרות בלבד) מתוך JID. מעדיף את הכתובת הרגילה על פני lid.
+function jidToPhone(jid, altJid) {
+  const pick = (altJid && altJid.includes('@s.whatsapp.net')) ? altJid
+             : (jid && jid.includes('@s.whatsapp.net')) ? jid
+             : (altJid || jid || '');
+  const d = String(pick).split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+  return d || null;
+}
+
+// שם קבוצה עם מטמון (כדי לא לשאול את ווצאפ בכל הודעה)
+async function groupSubject(sess, sock, jid) {
+  sess.groupNames = sess.groupNames || {};
+  if (sess.groupNames[jid]) return sess.groupNames[jid];
+  try {
+    const md = await sock.groupMetadata(jid);
+    sess.groupNames[jid] = md?.subject || jid.split('@')[0];
+  } catch { sess.groupNames[jid] = jid.split('@')[0]; }
+  return sess.groupNames[jid];
 }
 
 // ---------- שרת web + socket ----------
@@ -232,6 +254,15 @@ async function startSession(userId) {
       const from_me = m.key.fromMe ? 1 : 0;
       const sender_jid = m.key.participant || chat_jid;
       const sender_name = m.pushName || '';
+      // מספר הטלפון של השולח (מעדיף את הכתובת הרגילה על lid)
+      const sender_phone = isGroup
+        ? jidToPhone(m.key.participant, m.key.participantAlt)
+        : jidToPhone(chat_jid, m.key.remoteJidAlt);
+      // שם להצגה: קבוצה → שם הקבוצה; פרטי → שם איש הקשר / מספר; סטטוס → "סטטוס"
+      let chat_name;
+      if (isStatus) chat_name = 'סטטוס';
+      else if (isGroup) chat_name = await groupSubject(sess, sock, chat_jid);
+      else chat_name = sender_name || sender_phone || '';
       const timestamp = Number(m.messageTimestamp) || Math.floor(Date.now() / 1000);
       const { type: msgType, text, viewOnce } = extractContent(m);
       // הודעה חד-פעמית והמתג כבוי → מדלגים
@@ -263,7 +294,7 @@ async function startSession(userId) {
         } catch (e) { console.warn(`[${userId}] מדיה נכשלה`, e.message); }
       }
 
-      const record = { id, user_id: userId, chat_jid, sender_jid, sender_name, from_me, type: msgType, text, media_path, timestamp, view_once: viewOnce ? 1 : 0 };
+      const record = { id, user_id: userId, chat_jid, sender_jid, sender_name, from_me, type: msgType, text, media_path, timestamp, view_once: viewOnce ? 1 : 0, chat_name, sender_phone };
       store.saveMessage(record);
       io.to(userId).emit('message', record);
       if (viewOnce) console.log(`📸 [${userId}] נשמרה הודעה חד-פעמית (${msgType})`);

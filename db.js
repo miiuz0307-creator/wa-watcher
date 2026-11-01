@@ -38,7 +38,9 @@ db.exec(`
     timestamp   INTEGER,
     deleted     INTEGER DEFAULT 0,
     deleted_at  INTEGER,
-    view_once   INTEGER DEFAULT 0
+    view_once   INTEGER DEFAULT 0,
+    chat_name   TEXT,               -- שם הקבוצה / השולח להצגה
+    sender_phone TEXT               -- מספר הטלפון של השולח (ספרות)
   );
 
   CREATE TABLE IF NOT EXISTS push_subs (
@@ -60,6 +62,8 @@ try {
     console.log('♻️ DB: הוספה עמודת user_id והודעות קיימות שויכו ל-michael');
   }
   if (!cols.includes('view_once')) db.exec("ALTER TABLE messages ADD COLUMN view_once INTEGER DEFAULT 0");
+  if (!cols.includes('chat_name')) db.exec("ALTER TABLE messages ADD COLUMN chat_name TEXT");
+  if (!cols.includes('sender_phone')) db.exec("ALTER TABLE messages ADD COLUMN sender_phone TEXT");
 } catch (e) { console.warn('DB migrate:', e.message); }
 
 // הגירה: הוספת עמודות הגדרות מקור למשתמשים קיימים
@@ -97,9 +101,9 @@ const allUsersStmt = db.prepare(`
 // ---------- messages ----------
 const insertStmt = db.prepare(`
   INSERT OR IGNORE INTO messages
-    (id, user_id, chat_jid, sender_jid, sender_name, from_me, type, text, media_path, timestamp, view_once)
+    (id, user_id, chat_jid, sender_jid, sender_name, from_me, type, text, media_path, timestamp, view_once, chat_name, sender_phone)
   VALUES
-    (@id, @user_id, @chat_jid, @sender_jid, @sender_name, @from_me, @type, @text, @media_path, @timestamp, @view_once)
+    (@id, @user_id, @chat_jid, @sender_jid, @sender_name, @from_me, @type, @text, @media_path, @timestamp, @view_once, @chat_name, @sender_phone)
 `);
 const markDeletedStmt = db.prepare(`UPDATE messages SET deleted = 1, deleted_at = @deleted_at WHERE id = @id AND user_id = @user_id`);
 const getByIdStmt = db.prepare(`SELECT * FROM messages WHERE id = ? AND user_id = ?`);
@@ -137,7 +141,7 @@ export const store = {
   },
 
   // messages
-  saveMessage(msg) { insertStmt.run({ view_once: 0, ...msg }); },
+  saveMessage(msg) { insertStmt.run({ view_once: 0, chat_name: null, sender_phone: null, ...msg }); },
   markDeleted(userId, id) {
     markDeletedStmt.run({ user_id: userId, id, deleted_at: Math.floor(Date.now() / 1000) });
     return getByIdStmt.get(id, userId);

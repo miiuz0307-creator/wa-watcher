@@ -49,6 +49,11 @@
     .msg .who{font-weight:600;font-size:14px;color:var(--green)}
     .msg.deleted .who{color:var(--red)}
     .msg .time{font-size:12px;color:var(--muted)}
+    .msg .src{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+    .chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 9px;border-radius:999px;background:var(--panel-2);color:var(--muted);text-decoration:none;direction:ltr}
+    .chip.grp{background:rgba(37,211,102,.14);color:var(--green)}
+    .chip.tel{background:rgba(37,211,102,.14);color:var(--green);font-weight:600}
+    .chip.tel:active{opacity:.7}
     .msg .body{font-size:15px;line-height:1.5;word-break:break-word;white-space:pre-wrap}
     .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;background:var(--panel-2);color:var(--muted);margin-inline-start:8px}
     .badge.del{background:var(--red);color:#fff}
@@ -139,13 +144,25 @@
       return d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'numeric'});
     }
     function msgHtml(m){
-      const who=m.from_me?'אני':(m.sender_name||cleanJid(m.sender_jid));
+      const isGroup=(m.chat_jid||'').endsWith('@g.us');
+      const isStatus=(m.chat_jid||'')==='status@broadcast';
+      const who=m.from_me?'אני':(m.sender_name||(m.sender_phone?('+'+m.sender_phone):cleanJid(m.sender_jid)));
       const label=typeLabel[m.type]||m.type;
       let body=m.text?escapeHtml(m.text):'';
       if(!body&&!m.media_path){body=`<span style="color:var(--muted)">${label}${m.deleted?' (התוכן לא נשמר)':''}</span>`;}
       let badge=m.deleted?'🗑️ נמחקה':label;
       if(m.view_once)badge='📸 חד-פעמית'+(m.deleted?' · נמחקה':'');
-      return`<div class="msg ${m.deleted?'deleted':''}"><div class="top"><span class="who">${who}</span><span class="time">${fmtTime(m.timestamp)}</span></div><div class="body">${body} <span class="badge ${m.deleted?'del':''}">${badge}</span></div>${mediaHtml(m)}</div>`;
+      // שורת מקור: מאיפה ההודעה + טלפון השולח
+      let src='';
+      if(isStatus)src='<span class="chip">📸 סטטוס</span>';
+      else if(isGroup)src=`<span class="chip grp">👥 ${escapeHtml(m.chat_name||'קבוצה')}</span>`;
+      else src='<span class="chip">👤 פרטי</span>';
+      let phone='';
+      if(m.sender_phone&&!m.from_me){
+        const p=m.sender_phone;
+        phone=`<a class="chip tel" href="https://wa.me/${p}" target="_blank" rel="noopener">📞 +${p}</a>`;
+      }
+      return`<div class="msg ${m.deleted?'deleted':''}"><div class="top"><span class="who">${who}</span><span class="time">${fmtTime(m.timestamp)}</span></div><div class="src">${src}${phone}</div><div class="body">${body} <span class="badge ${m.deleted?'del':''}">${badge}</span></div>${mediaHtml(m)}</div>`;
     }
     function keyTs(m){return currentTab==='deleted'?(m.deleted_at||m.timestamp):m.timestamp;}
     function render(){
