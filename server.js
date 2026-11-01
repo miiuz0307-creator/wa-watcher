@@ -178,6 +178,7 @@ async function startSession(userId) {
 
     if (connection === 'open') {
       sess.qr = null;
+      sess.failCount = 0; // חיבור הצליח — מאפסים מונה כשלונות
       sess.status = '✅ מחובר — מאזין להודעות';
       const phone = sock.user?.id?.split(':')[0] || null;
       if (phone) store.setPhone(userId, phone);
@@ -189,18 +190,29 @@ async function startSession(userId) {
 
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode;
+      const reason = lastDisconnect?.error?.message || '';
       const loggedOut = code === DisconnectReason.loggedOut;
-      sess.status = loggedOut ? '🔌 נותק (יצא מהמכשירים המקושרים)' : '🔌 נותק — מתחבר מחדש...';
-      store.setStatus(userId, loggedOut ? 'disconnected' : 'connected');
-      io.to(userId).emit('status', sess.status);
-      console.log(`[${userId}] נותק. קוד: ${code}`);
       sess.sock = null;
+      sess.failCount = (sess.failCount || 0) + 1;
+      console.log(`[${userId}] נותק. קוד: ${code} (${reason}) | ניסיונות: ${sess.failCount}`);
+
       if (loggedOut) {
-        // התנתקות יזומה — מוחקים auth כדי לאפשר סריקה מחדש
         try { fs.rmSync(authDir, { recursive: true, force: true }); } catch {}
+        sess.status = '🔌 נותק — צריך לחבר מחדש';
+        store.setStatus(userId, 'disconnected');
+        io.to(userId).emit('status', sess.status);
+      } else if (sess.failCount >= 5) {
+        // נכשל שוב ושוב בלי להתחבר — מפסיקים ללחוץ על וואטסאפ ומבקשים חיבור מחדש
+        sess.status = '⚠️ החיבור לא יציב — לחץ "🔄 סרוק מחדש" כדי לחבר מחדש';
+        store.setStatus(userId, 'disconnected');
+        io.to(userId).emit('status', sess.status);
+        console.log(`[${userId}] עוצר ניסיונות אוטומטיים — ממתין לחיבור מחדש ידני`);
       } else if (!sess.reconnecting) {
+        sess.status = '🔌 מתחבר מחדש...';
+        io.to(userId).emit('status', sess.status);
         sess.reconnecting = true;
-        setTimeout(() => { sess.reconnecting = false; startSession(userId).catch(console.error); }, 3000);
+        const delay = Math.min(30000, 4000 * sess.failCount); // השהיה גדלה בהדרגה
+        setTimeout(() => { sess.reconnecting = false; startSession(userId).catch(console.error); }, delay);
       }
     }
   });
