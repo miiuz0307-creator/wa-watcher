@@ -17,13 +17,13 @@
     :root{--bg:#0b141a;--panel:#111b21;--panel-2:#1f2c33;--green:#00a884;--text:#e9edef;--muted:#8696a0;--red:#f15c6d;--red-bg:#2a1518;--border:#26343d}
     *{box-sizing:border-box}
     body{margin:0;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-    header{background:var(--panel);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+    header{background:var(--panel);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
     header h1{font-size:17px;margin:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-    .hdr-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-    @media(max-width:480px){
-      header h1{font-size:15px;width:100%}
-      .hdr-actions{width:100%;justify-content:flex-start}
-      .status{margin-inline-start:auto}
+    .hdr-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    @media(max-width:520px){
+      header{padding:10px 12px}
+      header h1{font-size:16px;width:100%}
+      .hdr-actions{width:100%}
     }
     .acct{font-size:13px;color:var(--muted);font-weight:400;cursor:pointer;background:var(--panel-2);padding:3px 10px;border-radius:12px}
     .acct:hover{color:var(--green)}
@@ -45,10 +45,11 @@
     #qr-box img{width:260px;height:260px;background:#fff;padding:12px;border-radius:10px}
     #qr-box p{color:var(--muted);font-size:14px;margin-top:16px;line-height:1.6}
     .hidden{display:none!important}
-    .tabs{display:flex;gap:8px;margin-bottom:14px}
-    .tab{flex:1;padding:10px;text-align:center;cursor:pointer;background:var(--panel);border:1px solid var(--border);border-radius:10px;font-size:14px;color:var(--muted)}
+    .tabs{display:flex;gap:6px;margin-bottom:14px}
+    .tab{flex:1;padding:9px 4px;text-align:center;cursor:pointer;background:var(--panel);border:1px solid var(--border);border-radius:10px;font-size:13px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:5px}
     .tab.active{background:var(--green);color:#04231c;font-weight:600;border-color:var(--green)}
-    .tab .count{display:inline-block;min-width:20px;padding:0 6px;margin-inline-start:6px;background:var(--red);color:#fff;border-radius:10px;font-size:12px}
+    .tab .count{display:inline-block;min-width:18px;padding:0 5px;background:var(--red);color:#fff;border-radius:10px;font-size:11px}
+    @media(max-width:380px){.tab{font-size:12px;padding:8px 3px}}
     .msg{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px}
     .msg.deleted{border-color:var(--red);background:var(--red-bg)}
     .msg .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -71,12 +72,12 @@
     .dayhead:before,.dayhead:after{content:"";position:absolute;top:50%;width:30%;height:1px;background:var(--border)}
     .dayhead:before{right:0}.dayhead:after{left:0}
     .settings{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px}
-    .settings-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    .settings-row{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap}
     .settings-row+.settings-row{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
-    .settings .s-title{font-size:13px;color:var(--muted);font-weight:600}
-    .settings .s-note{font-size:12px;color:var(--muted)}
-    .sw{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer}
-    .sw input{width:18px;height:18px;accent-color:var(--green);cursor:pointer}
+    .settings .s-title{font-size:13px;color:var(--muted);font-weight:600;width:100%}
+    .settings .s-note{font-size:12px;color:var(--muted);width:100%}
+    .sw{display:flex;align-items:center;gap:7px;font-size:14px;cursor:pointer;background:var(--panel-2);padding:7px 12px;border-radius:10px}
+    .sw input{width:18px;height:18px;accent-color:var(--green);cursor:pointer;margin:0}
     .notif-btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:7px 14px;font-size:13px;cursor:pointer}
     .notif-btn.on{background:rgba(0,168,132,.2);color:var(--green);border-color:var(--green)}
   </style>
@@ -117,9 +118,6 @@
       </div>
       <div id="feed"></div>
     </div>
-  </div>
-  <div style="text-align:center;padding:18px 0 28px">
-    <a href="/admin" target="_blank" rel="noopener" style="color:var(--muted);font-size:13px;text-decoration:none;opacity:.7">🛠️ ניהול</a>
   </div>
   <script src="/socket.io/socket.io.js"></script>
   <script>
