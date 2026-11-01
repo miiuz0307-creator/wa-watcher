@@ -108,6 +108,8 @@
   <script>
     // מזהה הלקוח מגיע מה-URL: /u/<id> , והשם מה-query ?n=
     const userId = location.pathname.split('/u/')[1]?.replace(/\/$/, '') || 'default';
+    // זוכרים את החשבון כדי שהכניסה הבאה תהיה ישירה (בלי לשאול שם ובלי ברקוד חדש)
+    try{ localStorage.setItem('wa_account', userId); }catch(e){}
     const chosenName = new URLSearchParams(location.search).get('n') || null;
     const socket=io();
     socket.on('connect',()=>socket.emit('join', { id: userId, name: chosenName }));

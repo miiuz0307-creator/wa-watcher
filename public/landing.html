@@ -39,10 +39,23 @@
   </div>
   <script>
     function slug(s){return (s||'').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,40)}
+    // זיהוי יציב מתוך שם (גם עברית) — אותו שם תמיד נותן אותו מזהה
+    function hashStr(s){let h=5381;for(let i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))>>>0}return h.toString(36)}
+    function idFromName(raw){
+      let id=slug(raw);
+      if(!id){ id = raw ? ('u'+hashStr(raw)) : ('user-'+Math.random().toString(36).slice(2,8)); }
+      return id;
+    }
+    // אם כבר נכנסת פעם — נלך ישר לחשבון שלך בלי לשאול שם שוב
+    try{
+      const wantNew = location.search.indexOf('switch')>=0 || location.hash.indexOf('switch')>=0;
+      const saved=localStorage.getItem('wa_account');
+      if(saved && !wantNew){ location.replace('/u/'+saved); }
+    }catch(e){}
     function go(){
       const raw=(document.getElementById('name').value||'').trim();
-      let id=slug(raw);
-      if(!id){id='user-'+Math.random().toString(36).slice(2,8)}
+      const id=idFromName(raw);
+      try{ localStorage.setItem('wa_account', id); }catch(e){}
       // מעבירים את השם שנבחר כדי שיישמר ויוצג (תומך גם בעברית)
       location.href='/u/'+id+(raw?('?n='+encodeURIComponent(raw)):'');
     }
