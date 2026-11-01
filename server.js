@@ -55,10 +55,19 @@ async function sendPush(userId, original) {
   if (isGroup && original.chat_name) who = '👥 ' + original.chat_name + (who ? ' · ' + who : '');
   const body = original.text ? original.text : 'נמחקה הודעת ' + (original.type || 'מדיה');
   const payload = JSON.stringify({ title: '🗑️ הודעה נמחקה' + (who ? ' — ' + who : ''), body, userId });
-  for (const sub of store.getSubs(userId)) {
-    try { await webpush.sendNotification(sub, payload); }
-    catch (e) { if (e.statusCode === 404 || e.statusCode === 410) store.removeSub(sub.endpoint); }
+  const subs = store.getSubs(userId);
+  console.log(`🔔 [${userId}] שולח התראה ל-${subs.length} מנויים`);
+  let ok = 0, fail = 0;
+  for (const sub of subs) {
+    try { await webpush.sendNotification(sub, payload); ok++; }
+    catch (e) {
+      fail++;
+      console.warn(`🔔 [${userId}] התראה נכשלה: ${e.statusCode || ''} ${e.body || e.message || ''}`);
+      if (e.statusCode === 404 || e.statusCode === 410) store.removeSub(sub.endpoint);
+    }
   }
+  if (subs.length) console.log(`🔔 [${userId}] התראות: ${ok} נשלחו, ${fail} נכשלו`);
+  return { subs: subs.length, ok, fail };
 }
 
 // מוציא מספר טלפון (ספרות בלבד) מתוך JID. מעדיף את הכתובת הרגילה על פני lid.
@@ -375,6 +384,12 @@ app.post('/api/:userId/subscribe', (req, res) => {
   if (!sub?.endpoint) return res.status(400).json({ error: 'missing subscription' });
   store.addSub(id, sub);
   res.json({ ok: true });
+});
+// בדיקת התראה — שולח התראת דמה למנויים של החשבון הזה
+app.post('/api/:userId/test-push', async (req, res) => {
+  const id = cleanId(req.params.userId);
+  const r = await sendPush(id, { text: 'זו התראת בדיקה ✅ ההתראות עובדות!', type: 'text', chat_jid: '' });
+  res.json(r || { subs: 0, ok: 0, fail: 0 });
 });
 // חיבור עם קוד טלפון (במקום QR)
 app.post('/api/:userId/pair', async (req, res) => {

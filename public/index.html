@@ -100,6 +100,7 @@
         <div class="settings-row">
           <span class="s-title">🔔 התראות:</span>
           <button id="notif-btn" class="notif-btn">הפעל התראות על מחיקות</button>
+          <button id="test-notif" class="notif-btn">בדיקת התראה</button>
           <span class="s-note">קבל התראה לנייד ברגע שמוחקים הודעה</span>
         </div>
       </div>
@@ -217,6 +218,23 @@
       }catch(e){alert('לא הצלחתי להפעיל התראות: '+e.message)}
     }
     notifBtn.addEventListener('click',enableNotifs);
+    // כפתור בדיקה: קודם מוודא שההרשמה פעילה, ואז מבקש מהשרת לשלוח התראה
+    const testBtn=document.getElementById('test-notif');
+    testBtn.addEventListener('click',async()=>{
+      testBtn.disabled=true;const orig=testBtn.textContent;testBtn.textContent='שולח...';
+      try{
+        if(Notification.permission!=='granted'){await enableNotifs();}
+        const reg=await navigator.serviceWorker.ready;
+        let sub=await reg.pushManager.getSubscription();
+        if(!sub){await enableNotifs();sub=await reg.pushManager.getSubscription();}
+        if(sub){await fetch('/api/'+userId+'/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub})});}
+        const r=await (await fetch('/api/'+userId+'/test-push',{method:'POST'})).json();
+        if(r.subs===0)alert('אין מנוי התראות על החשבון הזה. לחץ קודם "הפעל התראות".');
+        else if(r.ok>0)testBtn.textContent='נשלח ✓';
+        else alert('ההתראה נכשלה בשליחה ('+r.fail+' כשלונות). ודא שהאפליקציה מותקנת למסך הבית ושההתראות מאושרות בהגדרות המכשיר.');
+      }catch(e){alert('בדיקה נכשלה: '+e.message)}
+      setTimeout(()=>{testBtn.textContent=orig;testBtn.disabled=false;},2500);
+    });
     // אם כבר הופעלו — להציג כפעיל, ולחדש את ההרשמה בשקט
     try{if(localStorage.getItem('notif')==='1'&&Notification.permission==='granted'){notifBtn.textContent='🔔 התראות פעילות ✓';notifBtn.classList.add('on');enableNotifs()}}catch{}
     // סריקה מחדש — מנקה את החיבור הישן ומציג QR חדש
