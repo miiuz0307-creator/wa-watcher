@@ -30,6 +30,8 @@
     .pair button{background:var(--green);color:#04231c;border:none;border-radius:10px;padding:12px 20px;font-size:15px;font-weight:700;cursor:pointer}
     .codebox{margin-top:16px;font-size:30px;font-weight:800;letter-spacing:4px;color:var(--green);background:var(--panel-2);border:1px dashed var(--green);border-radius:12px;padding:16px;direction:ltr}
     .codebox .hint{display:block;font-size:12px;font-weight:400;letter-spacing:normal;color:var(--muted);margin-top:10px;direction:rtl}
+    .copycode{display:block;margin:12px auto 0;font-size:15px;font-weight:700;letter-spacing:normal;color:#0b141a;background:var(--green);border:none;border-radius:10px;padding:10px 18px;cursor:pointer;direction:rtl}
+    .copycode:active{opacity:.8}
     .status{font-size:13px;color:var(--muted);background:var(--panel-2);padding:6px 12px;border-radius:20px}
     .status.ok{color:var(--green)}
     .wrap{max-width:920px;margin:0 auto;padding:16px}
@@ -218,9 +220,22 @@
     });
     socket.on('pairingCode',code=>{
       getcode.textContent='קבל קוד חדש';getcode.disabled=false;
-      codebox.innerHTML=code+'<span class="hint">בוואטסאפ: הגדרות ← מכשירים מקושרים ← קישור מכשיר ← <b>"קישור עם מספר טלפון במקום"</b> ← הזן את הקוד הזה</span>';
+      codebox.innerHTML='<span id="pcode">'+code+'</span>'+
+        '<button id="copycode" type="button" class="copycode">📋 העתק קוד</button>'+
+        '<span class="hint">בוואטסאפ: הגדרות ← מכשירים מקושרים ← קישור מכשיר ← <b>"קישור עם מספר טלפון במקום"</b> ← הזן את הקוד הזה</span>';
       codebox.classList.remove('hidden');
+      const cb=document.getElementById('copycode');
+      cb.addEventListener('click',()=>{
+        const raw=code.replace(/[^A-Za-z0-9]/g,'');
+        const done=()=>{cb.textContent='✅ הועתק';setTimeout(()=>{cb.textContent='📋 העתק קוד'},1500)};
+        if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(raw).then(done).catch(()=>fallbackCopy(raw,done))}
+        else{fallbackCopy(raw,done)}
+      });
     });
+    function fallbackCopy(txt,done){
+      try{const t=document.createElement('textarea');t.value=txt;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.focus();t.select();document.execCommand('copy');document.body.removeChild(t);done&&done();}
+      catch(e){alert('העתק ידנית: '+txt)}
+    }
     socket.on('pairError',msg=>{getcode.textContent='קבל קוד התחברות';getcode.disabled=false;alert('לא הצלחתי לקבל קוד: '+msg+'\nנסה לסרוק QR במקום.');});
   </script>
   <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))}</script>
