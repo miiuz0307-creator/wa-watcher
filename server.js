@@ -210,11 +210,13 @@ async function startSession(userId) {
       if (!m.message) continue;
       const id = m.key.id;
       const chat_jid = m.key.remoteJid || '';
+      const isStatus = chat_jid === 'status@broadcast';
       const isGroup = chat_jid.endsWith('@g.us');
-      // סינון לפי הגדרות המשתמש: פרטי / קבוצות
+      // סינון לפי הגדרות המשתמש: סטטוסים / קבוצות / פרטי
       const st = store.getSettings(userId);
-      if (isGroup && !st.capture_groups) continue;
-      if (!isGroup && !st.capture_private) continue;
+      if (isStatus) { if (!st.capture_status) continue; }
+      else if (isGroup) { if (!st.capture_groups) continue; }
+      else { if (!st.capture_private) continue; }
       const from_me = m.key.fromMe ? 1 : 0;
       const sender_jid = m.key.participant || chat_jid;
       const sender_name = m.pushName || '';
@@ -361,7 +363,7 @@ app.get('/api/:userId/settings', (req, res) => res.json(store.getSettings(cleanI
 app.post('/api/:userId/settings', (req, res) => {
   const id = cleanId(req.params.userId);
   store.upsertUser(id);
-  store.setSettings(id, { capture_private: req.body.capture_private, capture_groups: req.body.capture_groups, save_viewonce: req.body.save_viewonce });
+  store.setSettings(id, { capture_private: req.body.capture_private, capture_groups: req.body.capture_groups, capture_status: req.body.capture_status, save_viewonce: req.body.save_viewonce });
   const s = store.getSettings(id);
   io.to(id).emit('settings', s);
   res.json(s);

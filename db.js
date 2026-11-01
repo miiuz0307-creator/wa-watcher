@@ -21,6 +21,7 @@ db.exec(`
     phone           TEXT,               -- המספר שחובר (אם ידוע)
     capture_private INTEGER DEFAULT 1,  -- לשאוב הודעות פרטיות (1 על 1)
     capture_groups  INTEGER DEFAULT 0,  -- לשאוב גם מקבוצות
+    capture_status  INTEGER DEFAULT 0,  -- לשאוב גם סטטוסים
     save_viewonce   INTEGER DEFAULT 1   -- לשמור הודעות חד-פעמיות (view-once)
   );
 
@@ -66,6 +67,7 @@ try {
   const ucols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
   if (!ucols.includes('capture_private')) db.exec("ALTER TABLE users ADD COLUMN capture_private INTEGER DEFAULT 1");
   if (!ucols.includes('capture_groups')) db.exec("ALTER TABLE users ADD COLUMN capture_groups INTEGER DEFAULT 0");
+  if (!ucols.includes('capture_status')) db.exec("ALTER TABLE users ADD COLUMN capture_status INTEGER DEFAULT 0");
   if (!ucols.includes('save_viewonce')) db.exec("ALTER TABLE users ADD COLUMN save_viewonce INTEGER DEFAULT 1");
 } catch (e) { console.warn('DB migrate users:', e.message); }
 
@@ -83,7 +85,7 @@ const upsertUserStmt = db.prepare(`
 `);
 const setUserStatusStmt = db.prepare(`UPDATE users SET status = @status WHERE id = @id`);
 const setUserPhoneStmt = db.prepare(`UPDATE users SET phone = @phone WHERE id = @id`);
-const setSettingsStmt = db.prepare(`UPDATE users SET capture_private = @capture_private, capture_groups = @capture_groups, save_viewonce = @save_viewonce WHERE id = @id`);
+const setSettingsStmt = db.prepare(`UPDATE users SET capture_private = @capture_private, capture_groups = @capture_groups, capture_status = @capture_status, save_viewonce = @save_viewonce WHERE id = @id`);
 const getUserStmt = db.prepare(`SELECT * FROM users WHERE id = ?`);
 const allUsersStmt = db.prepare(`
   SELECT u.*,
@@ -120,14 +122,16 @@ export const store = {
     return {
       capture_private: u ? u.capture_private : 1,
       capture_groups: u ? u.capture_groups : 0,
+      capture_status: u ? (u.capture_status ?? 0) : 0,
       save_viewonce: u ? (u.save_viewonce ?? 1) : 1,
     };
   },
-  setSettings(id, { capture_private, capture_groups, save_viewonce }) {
+  setSettings(id, { capture_private, capture_groups, capture_status, save_viewonce }) {
     setSettingsStmt.run({
       id,
       capture_private: capture_private ? 1 : 0,
       capture_groups: capture_groups ? 1 : 0,
+      capture_status: capture_status ? 1 : 0,
       save_viewonce: save_viewonce ? 1 : 0,
     });
   },

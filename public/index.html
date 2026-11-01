@@ -57,8 +57,11 @@
     .dayhead{text-align:center;color:var(--muted);font-size:13px;font-weight:600;margin:16px 0 8px;position:relative}
     .dayhead:before,.dayhead:after{content:"";position:absolute;top:50%;width:30%;height:1px;background:var(--border)}
     .dayhead:before{right:0}.dayhead:after{left:0}
-    .settings{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px}
-    .settings .s-title{font-size:13px;color:var(--muted)}
+    .settings{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+    .settings-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    .settings-row+.settings-row{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+    .settings .s-title{font-size:13px;color:var(--muted);font-weight:600}
+    .settings .s-note{font-size:12px;color:var(--muted)}
     .sw{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer}
     .sw input{width:18px;height:18px;accent-color:var(--green);cursor:pointer}
     .notif-btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:7px 14px;font-size:13px;cursor:pointer}
@@ -80,11 +83,18 @@
     </div>
     <div id="main" class="hidden">
       <div class="settings">
-        <span class="s-title">⚙️ מאיפה לשאוב:</span>
-        <label class="sw"><input type="checkbox" id="cap-private" checked><span>הודעות פרטיות</span></label>
-        <label class="sw"><input type="checkbox" id="cap-groups"><span>קבוצות</span></label>
-        <label class="sw"><input type="checkbox" id="save-vo" checked><span>חד-פעמיות</span></label>
-        <button id="notif-btn" class="notif-btn">🔔 הפעל התראות על מחיקות</button>
+        <div class="settings-row">
+          <span class="s-title">📥 מה לשמור:</span>
+          <label class="sw"><input type="checkbox" id="cap-private" checked><span>הודעות פרטיות</span></label>
+          <label class="sw"><input type="checkbox" id="cap-groups"><span>קבוצות</span></label>
+          <label class="sw"><input type="checkbox" id="cap-status"><span>סטטוסים</span></label>
+          <label class="sw"><input type="checkbox" id="save-vo" checked><span>חד-פעמיות</span></label>
+        </div>
+        <div class="settings-row">
+          <span class="s-title">🔔 התראות:</span>
+          <button id="notif-btn" class="notif-btn">הפעל התראות על מחיקות</button>
+          <span class="s-note">קבל התראה לנייד ברגע שמוחקים הודעה</span>
+        </div>
       </div>
       <div class="tabs">
         <div class="tab active" data-tab="all">כל ההודעות</div>
@@ -159,11 +169,12 @@
     socket.on('deleted',m=>{m.deleted=1;upsert(m);updateDelCount();render()});
     document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');currentTab=t.dataset.tab;render()}));
     // --- הגדרות מקור (פרטי/קבוצות) ---
-    const capPriv=document.getElementById('cap-private'),capGrp=document.getElementById('cap-groups'),saveVo=document.getElementById('save-vo');
-    socket.on('settings',s=>{capPriv.checked=!!s.capture_private;capGrp.checked=!!s.capture_groups;saveVo.checked=s.save_viewonce!==0});
-    function saveSettings(){fetch('/api/'+userId+'/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capture_private:capPriv.checked,capture_groups:capGrp.checked,save_viewonce:saveVo.checked})})}
+    const capPriv=document.getElementById('cap-private'),capGrp=document.getElementById('cap-groups'),capStatus=document.getElementById('cap-status'),saveVo=document.getElementById('save-vo');
+    socket.on('settings',s=>{capPriv.checked=!!s.capture_private;capGrp.checked=!!s.capture_groups;capStatus.checked=!!s.capture_status;saveVo.checked=s.save_viewonce!==0});
+    function saveSettings(){fetch('/api/'+userId+'/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capture_private:capPriv.checked,capture_groups:capGrp.checked,capture_status:capStatus.checked,save_viewonce:saveVo.checked})})}
     capPriv.addEventListener('change',saveSettings);
     capGrp.addEventListener('change',saveSettings);
+    capStatus.addEventListener('change',saveSettings);
     saveVo.addEventListener('change',saveSettings);
     // --- התראות Push על מחיקות ---
     const notifBtn=document.getElementById('notif-btn');
