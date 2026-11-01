@@ -50,11 +50,17 @@ try {
 
 async function sendPush(userId, original) {
   if (!vapid) return;
-  const isGroup = (original.chat_jid || '').endsWith('@g.us');
-  let who = original.sender_name || (original.sender_phone ? '+' + original.sender_phone : '');
-  if (isGroup && original.chat_name) who = '👥 ' + original.chat_name + (who ? ' · ' + who : '');
+  const jid = original.chat_jid || '';
+  const isGroup = jid.endsWith('@g.us');
+  const isStatus = jid === 'status@broadcast';
+  const sender = original.sender_name || (original.sender_phone ? '+' + original.sender_phone : '');
+  // מאיפה נמחק — מופיע בכותרת ההתראה
+  let where;
+  if (isStatus) where = '📸 סטטוס' + (sender ? ' · ' + sender : '');
+  else if (isGroup) where = '👥 ' + (original.chat_name || 'קבוצה') + (sender ? ' · ' + sender : '');
+  else where = '👤 ' + (sender || 'פרטי');
   const body = original.text ? original.text : 'נמחקה הודעת ' + (original.type || 'מדיה');
-  const payload = JSON.stringify({ title: '🗑️ הודעה נמחקה' + (who ? ' — ' + who : ''), body, userId });
+  const payload = JSON.stringify({ title: '🗑️ נמחק — ' + where, body, userId });
   const subs = store.getSubs(userId);
   console.log(`🔔 [${userId}] שולח התראה ל-${subs.length} מנויים`);
   let ok = 0, fail = 0;
