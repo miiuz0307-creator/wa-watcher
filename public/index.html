@@ -113,11 +113,12 @@
     // זוכרים את החשבון כדי שהכניסה הבאה תהיה ישירה (בלי לשאול שם ובלי ברקוד חדש)
     try{ localStorage.setItem('wa_account', userId); }catch(e){}
     const chosenName = new URLSearchParams(location.search).get('n') || null;
+    try{ if(chosenName) localStorage.setItem('wa_name', chosenName); }catch(e){}
     const socket=io();
     socket.on('connect',()=>socket.emit('join', { id: userId, name: chosenName }));
     // הצגת שם החשבון + שינוי שם בלחיצה
     const acctEl=document.getElementById('acct');
-    socket.on('name',n=>{acctEl.textContent='('+(n||userId)+') ✏️';acctEl.title='לחץ לשינוי שם'});
+    socket.on('name',n=>{acctEl.textContent='('+(n||userId)+') ✏️';acctEl.title='לחץ לשינוי שם';try{if(n)localStorage.setItem('wa_name',n)}catch(e){}});
     acctEl.addEventListener('click',()=>{
       const nn=prompt('שם לחשבון הזה:',acctEl.textContent.replace(/^\(|\) ✏️$/g,''));
       if(nn!==null)fetch('/api/'+userId+'/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nn})});

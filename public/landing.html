@@ -50,7 +50,18 @@
     try{
       const wantNew = location.search.indexOf('switch')>=0 || location.hash.indexOf('switch')>=0;
       const saved=localStorage.getItem('wa_account');
-      if(saved && !wantNew){ location.replace('/u/'+saved); }
+      if(saved && !wantNew){
+        const nm=(localStorage.getItem('wa_name')||'').trim();
+        const ov=document.createElement('div');
+        ov.setAttribute('style','position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#0b141a;color:#e9edef;text-align:center;padding:24px;font-family:inherit');
+        ov.innerHTML='<div style="font-size:52px">👋</div>'+
+          '<div style="font-size:26px;font-weight:800">ברוך הבא'+(nm?(' '+nm):'')+'!</div>'+
+          '<div style="font-size:17px;color:#8696a0">שמחים שחזרת 💚</div>'+
+          '<div style="margin-top:18px;width:30px;height:30px;border:3px solid #233138;border-top-color:#25d366;border-radius:50%;animation:was 0.8s linear infinite"></div>'+
+          '<style>@keyframes was{to{transform:rotate(360deg)}}</style>';
+        document.body.appendChild(ov);
+        setTimeout(()=>{ location.replace('/u/'+saved); }, 1300);
+      }
     }catch(e){}
     function go(){
       const raw=(document.getElementById('name').value||'').trim();
