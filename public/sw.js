@@ -1,6 +1,6 @@
 // Service Worker — הופך את האתר לאפליקציה שניתן להתקין (PWA)
 // מטרה עיקרית: התקנה למסך הבית. לא שומר נתונים במטמון (ההודעות חייבות להיות עדכניות בזמן אמת).
-const CACHE = 'wa-watcher-v1';
+const CACHE = 'wa-watcher-v2';
 const SHELL = ['/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -23,4 +23,30 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   e.respondWith(fetch(req).catch(() => caches.match(req)));
+});
+
+// התראת Push — מופיעה גם כשהאפליקציה סגורה
+self.addEventListener('push', (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = { title: '🗑️ הודעה נמחקה', body: '' }; }
+  const title = data.title || '🗑️ הודעה נמחקה';
+  e.waitUntil(self.registration.showNotification(title, {
+    body: data.body || '',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    dir: 'rtl',
+    lang: 'he',
+    tag: 'wa-deleted',
+    renotify: true,
+    data: { url: data.userId ? '/u/' + data.userId : '/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+    for (const w of wins) { if (w.url.includes(url) && 'focus' in w) return w.focus(); }
+    if (clients.openWindow) return clients.openWindow(url);
+  }));
 });

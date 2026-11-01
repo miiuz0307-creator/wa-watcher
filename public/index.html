@@ -61,6 +61,8 @@
     .settings .s-title{font-size:13px;color:var(--muted)}
     .sw{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer}
     .sw input{width:18px;height:18px;accent-color:var(--green);cursor:pointer}
+    .notif-btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:7px 14px;font-size:13px;cursor:pointer}
+    .notif-btn.on{background:rgba(0,168,132,.2);color:var(--green);border-color:var(--green)}
   </style>
 </head>
 <body>
@@ -82,6 +84,7 @@
         <label class="sw"><input type="checkbox" id="cap-private" checked><span>הודעות פרטיות</span></label>
         <label class="sw"><input type="checkbox" id="cap-groups"><span>קבוצות</span></label>
         <label class="sw"><input type="checkbox" id="save-vo" checked><span>חד-פעמיות</span></label>
+        <button id="notif-btn" class="notif-btn">🔔 הפעל התראות על מחיקות</button>
       </div>
       <div class="tabs">
         <div class="tab active" data-tab="all">כל ההודעות</div>
@@ -162,6 +165,27 @@
     capPriv.addEventListener('change',saveSettings);
     capGrp.addEventListener('change',saveSettings);
     saveVo.addEventListener('change',saveSettings);
+    // --- התראות Push על מחיקות ---
+    const notifBtn=document.getElementById('notif-btn');
+    function urlB64ToUint8(base64){const pad='='.repeat((4-base64.length%4)%4);const b=(base64+pad).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(b);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))}
+    async function enableNotifs(){
+      try{
+        if(!('serviceWorker'in navigator)||!('PushManager'in window)){alert('הדפדפן הזה לא תומך בהתראות. התקן את האפליקציה למסך הבית ונסה משם.');return}
+        const perm=await Notification.requestPermission();
+        if(perm!=='granted'){alert('לא אושרו התראות. אפשר להפעיל ידנית בהגדרות הדפדפן.');return}
+        const reg=await navigator.serviceWorker.ready;
+        const {key}=await (await fetch('/api/vapid-public')).json();
+        if(!key){alert('שרת ההתראות לא מוכן, נסה שוב בעוד רגע');return}
+        let sub=await reg.pushManager.getSubscription();
+        if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToUint8(key)});
+        await fetch('/api/'+userId+'/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub})});
+        notifBtn.textContent='🔔 התראות פעילות ✓';notifBtn.classList.add('on');
+        try{localStorage.setItem('notif','1')}catch{}
+      }catch(e){alert('לא הצלחתי להפעיל התראות: '+e.message)}
+    }
+    notifBtn.addEventListener('click',enableNotifs);
+    // אם כבר הופעלו — להציג כפעיל, ולחדש את ההרשמה בשקט
+    try{if(localStorage.getItem('notif')==='1'&&Notification.permission==='granted'){notifBtn.textContent='🔔 התראות פעילות ✓';notifBtn.classList.add('on');enableNotifs()}}catch{}
     // סריקה מחדש — מנקה את החיבור הישן ומציג QR חדש
     document.getElementById('rescan').addEventListener('click',()=>{
       if(!confirm('לנתק ולסרוק מחדש? יופיע QR חדש לסריקה.'))return;

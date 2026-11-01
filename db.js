@@ -40,6 +40,13 @@ db.exec(`
     view_once   INTEGER DEFAULT 0
   );
 
+  CREATE TABLE IF NOT EXISTS push_subs (
+    endpoint   TEXT PRIMARY KEY,
+    user_id    TEXT,
+    sub_json   TEXT,
+    created_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_sub_user ON push_subs(user_id);
 `);
 
 // הגירה: אם ה-DB נוצר בגרסה החד-משתמשת (בלי עמודת user_id) — נוסיף אותה
@@ -141,5 +148,13 @@ export const store = {
     return { count: info.changes, media };
   },
 };
+
+// ---------- push subscriptions ----------
+const addSubStmt = db.prepare(`INSERT OR REPLACE INTO push_subs (endpoint, user_id, sub_json, created_at) VALUES (@endpoint, @user_id, @sub_json, @created_at)`);
+const getSubsStmt = db.prepare(`SELECT sub_json FROM push_subs WHERE user_id = ?`);
+const delSubStmt = db.prepare(`DELETE FROM push_subs WHERE endpoint = ?`);
+store.addSub = (userId, sub) => addSubStmt.run({ endpoint: sub.endpoint, user_id: userId, sub_json: JSON.stringify(sub), created_at: Math.floor(Date.now() / 1000) });
+store.getSubs = (userId) => getSubsStmt.all(userId).map(r => { try { return JSON.parse(r.sub_json); } catch { return null; } }).filter(Boolean);
+store.removeSub = (endpoint) => delSubStmt.run(endpoint);
 
 export default db;

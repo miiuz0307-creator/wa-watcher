@@ -15,6 +15,7 @@ import pino from 'pino';
 import qrcode from 'qrcode';
 import { spawn } from 'child_process';
 import ffmpegPath from 'ffmpeg-static';
+import webpush from 'web-push';
 
 import makeWASocket, {
   useMultiFileAuthState,
@@ -36,6 +37,27 @@ if (!fs.existsSync(AUTH_ROOT)) fs.mkdirSync(AUTH_ROOT, { recursive: true });
 
 const ADMIN_KEY = process.env.ADMIN_KEY || 'michael'; // מפתח כניסה לפאנל הניהול
 const logger = pino({ level: 'warn' });
+
+// ---------- התראות Push ----------
+// מפתחות VAPID נשמרים על ה-volume כדי שלא ישתנו בין פריסות
+let vapid = null;
+try {
+  const vapidPath = path.join(DATA_DIR, 'vapid.json');
+  if (fs.existsSync(vapidPath)) vapid = JSON.parse(fs.readFileSync(vapidPath, 'utf8'));
+  else { vapid = webpush.generateVAPIDKeys(); fs.writeFileSync(vapidPath, JSON.stringify(vapid)); }
+  webpush.setVapidDetails('mailto:admin@wa-watcher.app', vapid.publicKey, vapid.privateKey);
+} catch (e) { console.warn('VAPID init:', e.message); }
+
+async function sendPush(userId, original) {
+  if (!vapid) return;
+  const who = original.sender_name || (original.sender_jid || '').replace('@s.whatsapp.net', '').replace('@g.us', '');
+  const body = original.text ? original.text : 'נמחקה הודעת ' + (original.type || 'מדיה');
+  const payload = JSON.stringify({ title: '🗑️ הודעה נמחקה' + (who ? ' — ' + who : ''), body, userId });
+  for (const sub of store.getSubs(userId)) {
+    try { await webpush.sendNotification(sub, payload); }
+    catch (e) { if (e.statusCode === 404 || e.statusCode === 410) store.removeSub(sub.endpoint); }
+  }
+}
 
 // ---------- שרת web + socket ----------
 const app = express();
@@ -244,6 +266,7 @@ async function startSession(userId) {
         if (original) {
           console.log(`🗑️ [${userId}] מחיקה זוהתה:`, original.text || original.type);
           io.to(userId).emit('deleted', original);
+          sendPush(userId, original).catch(() => {}); // התראה לנייד
         }
       }
     }
@@ -298,6 +321,15 @@ app.post('/api/:userId/reset', async (req, res) => {
   const id = cleanId(req.params.userId);
   try { await resetSession(id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+// התראות Push
+app.get('/api/vapid-public', (req, res) => res.json({ key: vapid?.publicKey || null }));
+app.post('/api/:userId/subscribe', (req, res) => {
+  const id = cleanId(req.params.userId);
+  const sub = req.body?.subscription;
+  if (!sub?.endpoint) return res.status(400).json({ error: 'missing subscription' });
+  store.addSub(id, sub);
+  res.json({ ok: true });
 });
 // חיבור עם קוד טלפון (במקום QR)
 app.post('/api/:userId/pair', async (req, res) => {
