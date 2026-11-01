@@ -1,6 +1,6 @@
 // Service Worker — הופך את האתר לאפליקציה שניתן להתקין (PWA)
 // מטרה עיקרית: התקנה למסך הבית. לא שומר נתונים במטמון (ההודעות חייבות להיות עדכניות בזמן אמת).
-const CACHE = 'wa-watcher-v3';
+const CACHE = 'wa-watcher-v4';
 const SHELL = ['/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
