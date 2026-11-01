@@ -480,14 +480,18 @@ function resumeSessions() {
 
 // ---------- שחרור מקום בעלייה: מוחק קבצי מדיה (האחסון התמלא מהם) ----------
 // רץ לפני כל כתיבה ל-DB, כדי לשבור לולאת קריסה של "disk is full".
+// ניקוי קבצים יתומים בלבד — קבצי מדיה שאין להם הודעה ב-DB (שאריות).
+// חשוב: לא מוחק מדיה ששייכת להודעה שמורה (מדבקות/תמונות/הקלטות של מחיקות נשמרות!)
 function freeDiskOnBoot() {
   try {
+    const referenced = new Set(store.allMediaPaths().map(p => p.replace('/media/', '')));
     let removed = 0, bytes = 0;
     for (const f of fs.readdirSync(MEDIA_DIR)) {
+      if (referenced.has(f)) continue; // בשימוש — משאירים
       const fp = path.join(MEDIA_DIR, f);
       try { const st = fs.statSync(fp); fs.unlinkSync(fp); removed++; bytes += st.size; } catch {}
     }
-    if (removed) console.log(`🧹 שוחרר מקום: נמחקו ${removed} קבצי מדיה (${(bytes / 1048576).toFixed(0)}MB)`);
+    if (removed) console.log(`🧹 נוקו ${removed} קבצי מדיה יתומים (${(bytes / 1048576).toFixed(0)}MB) — המדיה השמורה נשמרה`);
   } catch (e) { console.warn('freeDiskOnBoot:', e.message); }
 }
 

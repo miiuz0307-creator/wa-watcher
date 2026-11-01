@@ -142,6 +142,8 @@ export const store = {
 
   // messages
   saveMessage(msg) { insertStmt.run({ view_once: 0, chat_name: null, sender_phone: null, ...msg }); },
+  // כל נתיבי המדיה שעדיין בשימוש (כדי לא למחוק אותם בניקוי)
+  allMediaPaths() { return db.prepare(`SELECT media_path FROM messages WHERE media_path IS NOT NULL`).all().map(r => r.media_path); },
   markDeleted(userId, id) {
     markDeletedStmt.run({ user_id: userId, id, deleted_at: Math.floor(Date.now() / 1000) });
     return getByIdStmt.get(id, userId);
