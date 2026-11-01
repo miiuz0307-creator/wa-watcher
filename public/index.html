@@ -23,6 +23,13 @@
     .acct:hover{color:var(--green)}
     .rescan{background:var(--panel-2);color:var(--muted);border:1px solid var(--border);border-radius:16px;padding:5px 12px;font-size:12px;cursor:pointer}
     .rescan:hover{color:var(--green);border-color:var(--green)}
+    .pair{margin-top:22px;border-top:1px solid var(--border);padding-top:18px}
+    .pair-or{color:var(--muted);font-size:13px;margin-bottom:12px}
+    .pair input{width:100%;max-width:300px;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);font-size:16px;text-align:center;margin-bottom:10px;outline:none}
+    .pair input:focus{border-color:var(--green)}
+    .pair button{background:var(--green);color:#04231c;border:none;border-radius:10px;padding:12px 20px;font-size:15px;font-weight:700;cursor:pointer}
+    .codebox{margin-top:16px;font-size:30px;font-weight:800;letter-spacing:4px;color:var(--green);background:var(--panel-2);border:1px dashed var(--green);border-radius:12px;padding:16px;direction:ltr}
+    .codebox .hint{display:block;font-size:12px;font-weight:400;letter-spacing:normal;color:var(--muted);margin-top:10px;direction:rtl}
     .status{font-size:13px;color:var(--muted);background:var(--panel-2);padding:6px 12px;border-radius:20px}
     .status.ok{color:var(--green)}
     .wrap{max-width:920px;margin:0 auto;padding:16px}
@@ -62,6 +69,12 @@
     <div id="qr-box">
       <img id="qr-img" alt="QR" />
       <p>פתח וואטסאפ › <b>הגדרות</b> › <b>מכשירים מקושרים</b> › <b>קישור מכשיר</b> וסרוק את הקוד.<br>הקוד מתחלף — אם נעלם, רענן את הדף.</p>
+      <div class="pair">
+        <div class="pair-or">— או התחבר עם קוד (בלי לסרוק) —</div>
+        <input id="phone" type="tel" inputmode="numeric" placeholder="מספר הטלפון שלך (לדוגמה 0501234567)" />
+        <button id="getcode">קבל קוד התחברות</button>
+        <div id="codebox" class="codebox hidden"></div>
+      </div>
     </div>
     <div id="main" class="hidden">
       <div class="settings">
@@ -155,6 +168,23 @@
       statusEl.textContent='מאפס...';
       fetch('/api/'+userId+'/reset',{method:'POST'}).then(()=>{setTimeout(()=>location.reload(),1500)});
     });
+    // --- חיבור עם קוד טלפון (במקום QR) ---
+    const codebox=document.getElementById('codebox'),getcode=document.getElementById('getcode'),phoneEl=document.getElementById('phone');
+    getcode.addEventListener('click',()=>{
+      const phone=(phoneEl.value||'').trim();
+      if(phone.replace(/\D/g,'').length<9){alert('הכנס מספר טלפון תקין');return}
+      getcode.textContent='מבקש קוד...';getcode.disabled=true;
+      codebox.classList.add('hidden');
+      fetch('/api/'+userId+'/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})})
+        .then(r=>r.json()).then(j=>{if(j.error){alert(j.error);getcode.textContent='קבל קוד התחברות';getcode.disabled=false;}})
+        .catch(()=>{getcode.textContent='קבל קוד התחברות';getcode.disabled=false;});
+    });
+    socket.on('pairingCode',code=>{
+      getcode.textContent='קבל קוד חדש';getcode.disabled=false;
+      codebox.innerHTML=code+'<span class="hint">בוואטסאפ: הגדרות ← מכשירים מקושרים ← קישור מכשיר ← <b>"קישור עם מספר טלפון במקום"</b> ← הזן את הקוד הזה</span>';
+      codebox.classList.remove('hidden');
+    });
+    socket.on('pairError',msg=>{getcode.textContent='קבל קוד התחברות';getcode.disabled=false;alert('לא הצלחתי לקבל קוד: '+msg+'\nנסה לסרוק QR במקום.');});
   </script>
   <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))}</script>
 </body>

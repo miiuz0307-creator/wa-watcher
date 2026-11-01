@@ -123,6 +123,24 @@ async function startSession(userId) {
   });
   sess.sock = sock;
 
+  // חיבור עם קוד בן 8 תווים במקום QR (אם המשתמש ביקש והסשן עוד לא רשום)
+  if (sess.pendingPhone && !sock.authState?.creds?.registered) {
+    const phone = sess.pendingPhone;
+    sess.pendingPhone = null;
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(phone);
+        const pretty = (code && code.match(/.{1,4}/g)?.join('-')) || code;
+        sess.status = 'קוד התחברות: ' + pretty;
+        io.to(userId).emit('pairingCode', pretty);
+        console.log(`🔑 [${userId}] קוד התחברות: ${pretty}`);
+      } catch (e) {
+        console.warn(`[${userId}] שגיאת קוד:`, e.message);
+        io.to(userId).emit('pairError', e.message || 'שגיאה');
+      }
+    }, 3000);
+  }
+
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async (update) => {
@@ -280,6 +298,25 @@ app.post('/api/:userId/reset', async (req, res) => {
   const id = cleanId(req.params.userId);
   try { await resetSession(id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+// חיבור עם קוד טלפון (במקום QR)
+app.post('/api/:userId/pair', async (req, res) => {
+  const id = cleanId(req.params.userId);
+  let phone = String(req.body.phone || '').replace(/\D/g, '');
+  if (phone.startsWith('0')) phone = '972' + phone.slice(1); // 05... → 9725...
+  if (phone.length < 10) return res.status(400).json({ error: 'מספר לא תקין' });
+  try {
+    // מאתחלים סשן נקי ומסמנים שרוצים קוד
+    const old = sessions[id];
+    try { old?.sock?.end?.(new Error('pair')); } catch {}
+    delete sessions[id];
+    try { fs.rmSync(path.join(AUTH_ROOT, id), { recursive: true, force: true }); } catch {}
+    sessions[id] = { sock: null, qr: null, status: 'מבקש קוד...', reconnecting: false, pendingPhone: phone };
+    store.upsertUser(id);
+    store.setStatus(id, 'waiting_qr');
+    await startSession(id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/:userId/name', (req, res) => {
   const id = cleanId(req.params.userId);
