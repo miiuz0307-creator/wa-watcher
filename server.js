@@ -284,8 +284,12 @@ async function startSession(userId) {
       if (viewOnce && !st.save_viewonce) continue;
 
       let media_path = null;
-      // מורידים מדיה רק מהודעות פרטיות — מדיה מקבוצות מילאה את האחסון ולא נשמרת
-      if (MEDIA_TYPES.includes(msgType) && !isGroup) {
+      // מהודעות פרטיות — מורידים כל סוגי המדיה.
+      // מקבוצות — מורידים רק הקלטות קוליות/אודיו (קטנות); תמונות/סרטונים/קבצים מקבוצה
+      // לא מורידים כי הם מילאו את האחסון.
+      const isVoiceAudio = (msgType === 'voice' || msgType === 'audio');
+      const shouldDownload = MEDIA_TYPES.includes(msgType) && (!isGroup || isVoiceAudio);
+      if (shouldDownload) {
         try {
           // מורידים מההודעה ה"פתוחה" (ללא עטיפת view-once/ephemeral) כדי שגם מדיה חד-פעמית תרד
           const mForDl = { key: m.key, message: unwrap(m.message || {}) };
